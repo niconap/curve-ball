@@ -10,6 +10,53 @@ run.
 If you want fixed curvature (not learned), also pass:
 `general.learn_curvature=false`
 
+## CLI Values
+
+Copy these fragments directly into a command line.
+
+`dataset` values:
+
+```text
+dataset=comm20
+dataset=ego_small
+dataset=guacamol
+dataset=hyperbolic
+dataset=moses
+dataset=planar
+dataset=qm9
+dataset=sbm
+dataset=tree
+dataset=zinc
+```
+
+`+experiment` values:
+
+```text
++experiment=comm20
++experiment=comm20_hyp
++experiment="comm20_hyp copy"
++experiment=debug
++experiment=ego_small
++experiment=ego_small_3edge
++experiment=ego_small_compress
++experiment=ego_small_hyp
++experiment="ego_small_hyp copy"
++experiment=guacamol
++experiment=moses
++experiment=nx_graphs
++experiment=planar
++experiment=planar_4edge
++experiment=planar_hyp
++experiment=qm9
++experiment="qm9 copy"
++experiment=qm9_no_h
++experiment=qm9_with_h
++experiment=sbm
++experiment=test
++experiment=tree
++experiment=zinc
+```
+
 ## Map of experiment configs
 
 - Community-small HVQVAE: `configs/experiment/comm20_hyp.yaml`
