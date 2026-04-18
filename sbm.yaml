@@ -1,6 +1,0 @@
-name: sbm
-remove_h: null
-datadir: 'data/sbm/'
-# FIX: SpectreGraphDataModule reads cfg.dataset.debug but this field was missing.
-# ConfigAttributeError: Key 'debug' is not in struct
-debug: false

@@ -1,0 +1,4 @@
+name: sbm
+remove_h: null
+datadir: 'data/sbm/'
+debug: false
