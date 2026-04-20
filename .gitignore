@@ -1,0 +1,39 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Test and lint caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.nox/
+.tox/
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# Local logs and experiment outputs
+wandb/
+lightning_logs/
+logs/
+outputs/
+runs/
+
+# Model checkpoints and binaries
+*.ckpt
+*.pth
+*.pt
+*.bin
+
+# Repo-specific build artifacts
+src/analysis/orca/orca
+src/analysis/orca/tmp_*.txt
+
+# OS metadata
+.DS_Store

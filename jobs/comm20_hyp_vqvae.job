@@ -1,0 +1,41 @@
+#!/bin/bash
+#SBATCH --job-name=comm20_hyp_vqvae
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=9
+#SBATCH --time=12:00:00
+#SBATCH --output=outputs/comm20_hyp_vqvae%j.out
+#SBATCH --error=outputs/comm20_hyp_vqvae%j.err
+
+# 1. Environment
+module load 2023
+module load Miniconda3/23.5.2-0
+source activate ~/.conda/envs/ggball
+export PYTHONPATH=$PYTHONPATH:$(pwd):$(pwd)/src/models/hyperbolic_nn_plusplus
+
+# 2. WandB Fixes
+export WANDB_START_METHOD=thread
+export WANDB_SILENT=true
+if [ -n "${WANDB_API_KEY}" ]; then
+  export WANDB_MODE=online
+  WANDB_LOG_MODE=online
+  echo "WANDB_API_KEY detected: using online mode."
+else
+  export WANDB_MODE=offline
+  WANDB_LOG_MODE=offline
+  echo "WANDB_API_KEY not set: using offline mode."
+fi
+
+CURVATURE=$1
+echo "Using curvature ${CURVATURE}"
+
+# 3. Execution
+python3 src/main.py \
+  +experiment=comm20_hyp \
+  dataset=comm20 \
+  loss=VQVAE \
+  model.c=${CURVATURE} \
+  general.learn_curvature=false \
+  general.wandb=${WANDB_LOG_MODE} \
+  dataset.debug=false
