@@ -7,9 +7,6 @@ $c \in \{0.1, 0.5, 1.0, 2.5, 5.0\}$
 Run from repository root and use the command override `model.c=<value>` in every
 run.
 
-If you want fixed curvature (not learned), also pass:
-`general.learn_curvature=false`
-
 ## CLI Values
 
 Copy these fragments directly into a command line.
@@ -75,13 +72,13 @@ For each $c$ value, run this base command for HVQVAE pretraining:
 
 ```bash
 python3 src/main.py +experiment=<experiment_name> dataset=<dataset_name>
-loss=VQVAE model.c=<c_value> general.learn_curvature=false
+loss=VQVAE model.c=<c_value>
 ```
 
 For each $c$ value, run this base command for flow matching (after HVQVAE):
 
 ```bash
-python3 src/train_flow.py +experiment=<experiment_name> dataset=<dataset_name> loss=VQVAE model.c=<c_value> general.learn_curvature=false flow_train.VAE_checkpoint=<path_to_vae_checkpoint>
+python3 src/train_flow.py +experiment=<experiment_name> dataset=<dataset_name> loss=VQVAE model.c=<c_value> flow_train.VAE_checkpoint=<path_to_vae_checkpoint>
 ```
 
 ## Table 1
@@ -92,7 +89,7 @@ Validation metrics: degree, clustering, orbit, average.
    - Config: configs/experiment/comm20_hyp.yaml
    - Command template:
      ```bash
-     python3 src/main.py +experiment=comm20_hyp dataset=comm20 loss=VQVAE model.c=<c_value> general.learn_curvature=false
+     python3 src/main.py +experiment=comm20_hyp dataset=comm20 loss=VQVAE model.c=<c_value>
      ```
    - Do this for all $c$ in {0.1, 0.5, 1.0, 2.5, 5.0}.
    - Collect validation sampling metrics after training/testing from logs.
@@ -101,7 +98,7 @@ Validation metrics: degree, clustering, orbit, average.
    - Config: configs/experiment/ego_small_hyp.yaml
    - Command template:
      ```bash
-     python3 src/main.py +experiment=ego_small_hyp dataset=ego_small loss=VQVAE model.c=<c_value> general.learn_curvature=false
+     python3 src/main.py +experiment=ego_small_hyp dataset=ego_small loss=VQVAE model.c=<c_value>
      ```
    - Do this for all $c$ in {0.1, 0.5, 1.0, 2.5, 5.0}.
    - Collect validation sampling metrics after training/testing from logs.
@@ -110,7 +107,7 @@ Validation metrics: degree, clustering, orbit, average.
    - Config: configs/experiment/qm9.yaml
    - Command template:
      ```bash
-     python3 src/main.py +experiment=qm9 dataset=qm9 loss=VQVAE model.c=<c_value> general.learn_curvature=false
+     python3 src/main.py +experiment=qm9 dataset=qm9 loss=VQVAE model.c=<c_value>
      ```
    - Do this for all $c$ in {0.1, 0.5, 1.0, 2.5, 5.0}.
    - Collect validation sampling metrics after training/testing from logs.
@@ -129,7 +126,7 @@ Validation metrics: degree, clustering, orbit, average.
    - Step A: train HVQVAE and save best checkpoint.
    - Step B: run flow matching with that checkpoint:
      ```bash
-     python3 src/train_flow.py +experiment=comm20_hyp dataset=comm20 loss=VQVAE model.c=<c_value> general.learn_curvature=false flow_train.VAE_checkpoint=<path_to_vae_checkpoint>
+     python3 src/train_flow.py +experiment=comm20_hyp dataset=comm20 loss=VQVAE model.c=<c_value> flow_train.VAE_checkpoint=<path_to_vae_checkpoint>
      ```
    - Repeat for all $c$ values.
 
@@ -143,7 +140,7 @@ Validation metrics: degree, clustering, orbit, average.
    - Step A: train HVQVAE and save best checkpoint.
    - Step B: run flow matching:
      ```bash
-     python3 src/train_flow.py +experiment=ego_small_hyp dataset=ego_small loss=VQVAE model.c=<c_value> general.learn_curvature=false flow_train.VAE_checkpoint=<path_to_vae_checkpoint>
+     python3 src/train_flow.py +experiment=ego_small_hyp dataset=ego_small loss=VQVAE model.c=<c_value> flow_train.VAE_checkpoint=<path_to_vae_checkpoint>
      ```
    - Repeat for all $c$ values.
 
@@ -156,7 +153,7 @@ valid+unique+novel.
    - Config: configs/experiment/qm9.yaml
    - Command template:
      ```bash
-     python3 src/main.py +experiment=qm9 dataset=qm9 loss=VQVAE model.c=<c_value> general.learn_curvature=false
+     python3 src/main.py +experiment=qm9 dataset=qm9 loss=VQVAE model.c=<c_value>
      ```
    - Repeat for all $c$ values.
 
@@ -166,7 +163,7 @@ valid+unique+novel.
    - Step A: train HVQVAE and save checkpoint.
    - Step B: run flow matching:
      ```bash
-     python3 src/train_flow.py +experiment=qm9 dataset=qm9 loss=VQVAE model.c=<c_value> general.learn_curvature=false flow_train.VAE_checkpoint=<path_to_vae_checkpoint>
+     python3 src/train_flow.py +experiment=qm9 dataset=qm9 loss=VQVAE model.c=<c_value> flow_train.VAE_checkpoint=<path_to_vae_checkpoint>
      ```
    - Repeat for all $c$ values.
 

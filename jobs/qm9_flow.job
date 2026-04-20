@@ -38,7 +38,6 @@ python3 src/train_flow.py \
   dataset=qm9 \
   loss=VQVAE \
   model.c=${CURVATURE} \
-  general.learn_curvature=false \
   general.wandb=${WANDB_LOG_MODE} \
   dataset.debug=false \
   flow_train.VAE_checkpoint=${VAE_CHECKPOINT}
