@@ -18,6 +18,7 @@ export PYTHONPATH=$PYTHONPATH:$(pwd):$(pwd)/src/models/hyperbolic_nn_plusplus
 # 2. WandB Fixes
 export WANDB_START_METHOD=thread
 export WANDB_SILENT=true
+export WANDB_API_KEY="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"
 if [ -n "${WANDB_API_KEY}" ]; then
   export WANDB_MODE=online
   WANDB_LOG_MODE=online
