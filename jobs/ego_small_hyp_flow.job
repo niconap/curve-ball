@@ -4,13 +4,14 @@
 #SBATCH --gpus=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=9
-#SBATCH --time=12:00:00
+#SBATCH --time=24:00:00
 #SBATCH --output=outputs/ego_small_hyp_flow%j.out
 #SBATCH --error=outputs/ego_small_hyp_flow%j.err
 
 # 1. Environment
-module load 2023
-module load Miniconda3/23.5.2-0
+module load 2024
+module load Miniconda3/24.7.1-0
+module load Mamba/24.9.0-0
 source activate ~/.conda/envs/ggball
 export PYTHONPATH=$PYTHONPATH:$(pwd):$(pwd)/src/models/hyperbolic_nn_plusplus
 
@@ -33,7 +34,7 @@ echo "Using curvature ${CURVATURE}"
 echo "Using VAE checkpoint ${VAE_CHECKPOINT}"
 
 # 3. Execution
-python3 src/train_flow.py \
+time /home/scur0096/.conda/envs/ggball/bin/python3 src/train_flow.py \
   +experiment=ego_small_hyp \
   dataset=ego_small \
   loss=VQVAE \
