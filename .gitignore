@@ -37,3 +37,6 @@ src/analysis/orca/tmp_*.txt
 
 # OS metadata
 .DS_Store
+
+outputs/*
+data/*

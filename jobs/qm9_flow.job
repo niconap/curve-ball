@@ -4,19 +4,21 @@
 #SBATCH --gpus=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=9
-#SBATCH --time=12:00:00
+#SBATCH --time=24:00:00
 #SBATCH --output=outputs/qm9_flow%j.out
 #SBATCH --error=outputs/qm9_flow%j.err
 
 # 1. Environment
-module load 2023
-module load Miniconda3/23.5.2-0
+module load 2024
+module load Miniconda3/24.7.1-0
+module load Mamba/24.9.0-0
 source activate ~/.conda/envs/ggball
 export PYTHONPATH=$PYTHONPATH:$(pwd):$(pwd)/src/models/hyperbolic_nn_plusplus
 
 # 2. WandB Fixes
 export WANDB_START_METHOD=thread
 export WANDB_SILENT=true
+export WANDB_API_KEY="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"
 if [ -n "${WANDB_API_KEY}" ]; then
   export WANDB_MODE=online
   WANDB_LOG_MODE=online
@@ -27,13 +29,8 @@ else
   echo "WANDB_API_KEY not set: using offline mode."
 fi
 
-CURVATURE=$1
-VAE_CHECKPOINT=$2
-echo "Using curvature ${CURVATURE}"
-echo "Using VAE checkpoint ${VAE_CHECKPOINT}"
-
 # 3. Execution
-python3 src/train_flow.py \
+time /home/scur0096/.conda/envs/ggball/bin/python3 src/train_flow.py \
   +experiment=qm9 \
   dataset=qm9 \
   loss=VQVAE \
