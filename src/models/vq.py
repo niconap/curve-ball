@@ -118,6 +118,31 @@ def hyperbolic_ema(p, q, decay, manifold):
     p_new = manifold.expmap((1-decay)*v, p)     # ② 沿测地走 (1-α) 步
     return manifold.projx(p_new)                # ③ 投回球内
 
+# def hyperbolic_orthogonal_loss_fn(t, manifold):
+#     n = t.shape[0]
+#     # Pairwise geodesic distances
+#     dist_matrix = manifold.dist(
+#         t.unsqueeze(1).expand(n, n, -1),
+#         t.unsqueeze(0).expand(n, n, -1)
+#     )  # (n, n)
+#     # Encourage all pairwise distances to be large and equal
+#     mean_dist = dist_matrix.sum() / (n * (n-1) + 1e-8)
+#     return -mean_dist  # maximize spread
+
+def hyperbolic_orthogonal_loss_fn(t, manifold):
+    n = t.shape[0]
+    dist_matrix = manifold.dist(
+        t.unsqueeze(1).expand(n, n, -1),
+        t.unsqueeze(0).expand(n, n, -1)
+    )
+    mask = ~torch.eye(n, dtype=torch.bool, device=t.device)
+    off_diag = dist_matrix[mask]
+    
+    mean_dist = off_diag.mean()
+    var_dist = off_diag.var()
+    
+    # Normalize by mean so loss is always positive
+    return var_dist / (mean_dist + 1e-8)  # minimize variance relative to mean
 
 # regularization losses
 
@@ -177,7 +202,7 @@ class Codebook(nn.Module):
         # import pdb; pdb.set_trace()
         # 打印初始embed的norm
         embed_norm = torch.norm(self.embed, p=2, dim=1)
-        print(f"Initial embed norm shape: {embed_norm.shape}, embed norm min: {embed_norm.min().item():.4f}, embed norm max: {embed_norm.max().item():.4f}, embed norm mean: {embed_norm.mean().item():.4f}")
+        #print(f"Initial embed norm shape: {embed_norm.shape}, embed norm min: {embed_norm.min().item():.4f}, embed norm max: {embed_norm.max().item():.4f}, embed norm mean: {embed_norm.mean().item():.4f}")
 
         self.kmeans_iters = kmeans_iters
         self.eps = eps
@@ -285,6 +310,18 @@ class Codebook(nn.Module):
         )
         self.embed.data.copy_(modified_codebook)
 
+    # def expire_codes_(self, batch_samples):
+    #     if self.threshold_ema_dead_code == 0:
+    #         return
+
+    #     expired_codes = self.cluster_size < self.threshold_ema_dead_code
+    #     if not torch.any(expired_codes):
+    #         return
+    #     ## 查看有多少个expired_codes
+    #     print(f"expired_codes: {expired_codes.sum().item()}")
+    #     batch_samples = rearrange(batch_samples, '... d -> (...) d')
+    #     self.replace(batch_samples, mask=expired_codes)
+
     def expire_codes_(self, batch_samples):
         if self.threshold_ema_dead_code == 0:
             return
@@ -292,10 +329,29 @@ class Codebook(nn.Module):
         expired_codes = self.cluster_size < self.threshold_ema_dead_code
         if not torch.any(expired_codes):
             return
-        ## 查看有多少个expired_codes
+
         print(f"expired_codes: {expired_codes.sum().item()}")
+        
+        n_expired = expired_codes.sum().item()
         batch_samples = rearrange(batch_samples, '... d -> (...) d')
-        self.replace(batch_samples, mask=expired_codes)
+        
+        # Clone the busiest codes and perturb slightly
+        busiest_ids = self.cluster_size.topk(n_expired).indices
+        revival = self.embed[busiest_ids].clone()  # (n_expired, D)
+        
+        # Small random perturbation on the manifold
+        noise = self.manifold.random(n_expired, self.dim).to(revival.device) * 0.05
+        revival = self.manifold.expmap(noise, revival)  # move along geodesic
+        revival = self.manifold.projx(revival)
+        
+        # Place revived codes back
+        new_embed = self.embed.data.clone()
+        new_embed[expired_codes] = revival
+        self.embed.data.copy_(new_embed)
+        
+        # Also reset embed_avg and cluster_size for revived codes
+        self.embed_avg[expired_codes] = revival
+        self.cluster_size[expired_codes] = self.threshold_ema_dead_code + 1    
 
     @autocast(enabled=False)
     def forward(self, x, svq_temp:Union[float,None]=None, node_mask=None):
@@ -314,7 +370,7 @@ class Codebook(nn.Module):
 
         # 打印flatten的norm
         flatten_norm = torch.norm(flatten, p=2, dim=1)
-        print(f"flatten norm shape: {flatten_norm.shape}, flatten norm min: {flatten_norm.min().item():.4f}, flatten norm max: {flatten_norm.max().item():.4f}, flatten norm mean: {flatten_norm.mean().item():.4f}")
+        #print(f"flatten norm shape: {flatten_norm.shape}, flatten norm min: {flatten_norm.min().item():.4f}, flatten norm max: {flatten_norm.max().item():.4f}, flatten norm mean: {flatten_norm.mean().item():.4f}")
         if self.use_hyperbolic:
             dist = -self.manifold.dist_matmul(
                 flatten.unsqueeze(0),
@@ -322,8 +378,8 @@ class Codebook(nn.Module):
             )
             # 打印dist和embed的norm
             embed_norm = torch.norm(embed, p=2, dim=0)
-            print(f"dist shape: {dist.shape}, dist min: {dist.min().item():.4f}, dist max: {dist.max().item():.4f}, dist mean: {dist.mean().item():.4f}")
-            print(f"embed norm shape: {embed_norm.shape}, embed norm min: {embed_norm.min().item():.4f}, embed norm max: {embed_norm.max().item():.4f}, embed norm mean: {embed_norm.mean().item():.4f}")
+            #print(f"dist shape: {dist.shape}, dist min: {dist.min().item():.4f}, dist max: {dist.max().item():.4f}, dist mean: {dist.mean().item():.4f}")
+            #print(f"embed norm shape: {embed_norm.shape}, embed norm min: {embed_norm.min().item():.4f}, embed norm max: {embed_norm.max().item():.4f}, embed norm mean: {embed_norm.mean().item():.4f}")
         else:
             dist = -(
                 flatten.pow(2).sum(1, keepdim=True)
@@ -332,8 +388,8 @@ class Codebook(nn.Module):
             )
             # 打印dist和embed的norm
             embed_norm = torch.norm(embed, p=2, dim=0)
-            print(f"dist shape: {dist.shape}, dist min: {dist.min().item():.4f}, dist max: {dist.max().item():.4f}, dist mean: {dist.mean().item():.4f}")
-            print(f"embed norm shape: {embed_norm.shape}, embed norm min: {embed_norm.min().item():.4f}, embed norm max: {embed_norm.max().item():.4f}, embed norm mean: {embed_norm.mean().item():.4f}")
+            #print(f"dist shape: {dist.shape}, dist min: {dist.min().item():.4f}, dist max: {dist.max().item():.4f}, dist mean: {dist.mean().item():.4f}")
+            #print(f"embed norm shape: {embed_norm.shape}, embed norm min: {embed_norm.min().item():.4f}, embed norm max: {embed_norm.max().item():.4f}, embed norm mean: {embed_norm.mean().item():.4f}")
 
         # embed_ind = gumbel_sample(dist, dim=-1, temperature=self.sample_codebook_temp)
         temp = svq_temp
@@ -372,6 +428,8 @@ class Codebook(nn.Module):
             two_pts = torch.stack((self.embed_avg, new_centroids), dim=1)  # (K, 2, D)
             w = torch.tensor([beta, 1-beta], device=two_pts.device)  # (2,)
 
+            has_assignment = (embed_onehot.sum(0) > 0)
+
             smooth_centroids = self.manifold.weighted_midpoint(
                     xs = two_pts,
                     weights = w.expand(self.codebook_size, 2),   # (K, 2)
@@ -379,8 +437,20 @@ class Codebook(nn.Module):
                     keepdim = False,
             )
 
+
+            # Only update codes that had assignments this step
+            new_embed = self.embed.data.clone()
+            new_embed_avg = self.embed_avg.clone()
+            new_embed[has_assignment] = self.manifold.projx(smooth_centroids)[has_assignment]
+            new_embed_avg[has_assignment] = smooth_centroids[has_assignment]
+
+            self.embed.data.copy_(new_embed)
+            self.embed_avg.data.copy_(new_embed_avg)
+
+
             # 投影回球内，完成更新
-            self.embed.data.copy_( self.manifold.projx(smooth_centroids) )
+            # self.embed_avg.data.copy_(smooth_centroids)  # add this line
+            # self.embed.data.copy_( self.manifold.projx(smooth_centroids) )
             self.expire_codes_(x)                 # 死码字逻辑照旧
             # ---------------------------------------------------------------
 
@@ -401,10 +471,12 @@ class Codebook(nn.Module):
         # 打印更新后的embed的norm
         # if self.training and self.learnable_codebook:
         embed_norm = torch.norm(self.embed, p=2, dim=1)
-        print(f"Updated embed norm shape: {embed_norm.shape}, embed norm min: {embed_norm.min().item():.4f}, embed norm max: {embed_norm.max().item():.4f}, embed norm mean: {embed_norm.mean().item():.4f}")
+        #print(f"Updated embed norm shape: {embed_norm.shape}, embed norm min: {embed_norm.min().item():.4f}, embed norm max: {embed_norm.max().item():.4f}, embed norm mean: {embed_norm.mean().item():.4f}")
 
         # perplexity
-        avg_probs = torch.mean(embed_onehot, dim=0)  # (K,)
+        n_valid = node_mask.sum().clamp(min=1)
+        avg_probs = embed_onehot.sum(0) / n_valid
+        # avg_probs = torch.mean(embed_onehot, dim=0) / n_valid  # (K,) 
         perplexity = torch.exp(-torch.sum(avg_probs * torch.log(avg_probs + 1e-10)))
         self.embed_onehot = embed_onehot.detach()  # .cpu()
         self.perplexity = perplexity.detach()  # .cpu()
@@ -426,12 +498,12 @@ class VectorQuantize(nn.Module):
             codebook_size,
             codebook_dim=None,
             heads=1,
-            decay=0.8,
+            decay=0.99, #NOTE: hardcode updating this
             eps=1e-5,
             kmeans_init=False,
             kmeans_iters=10,
             use_cosine_sim=False,
-            threshold_ema_dead_code=5,
+            threshold_ema_dead_code=2, # NOTE: Hardcode change
             channel_last=True,
             accept_image_fmap=False,
             vq_loss_weight=1.,
@@ -463,6 +535,7 @@ class VectorQuantize(nn.Module):
         self.orthogonal_reg_active_codes_only = orthogonal_reg_active_codes_only
         self.orthogonal_reg_max_codes = orthogonal_reg_max_codes
         self.learnable_codebook = has_vq_loss_weight
+        self.use_hyperbolic = use_hyperbolic
         # codebook_class = EuclideanCodebook
 
         # self._codebook = codebook_class(
@@ -524,8 +597,12 @@ class VectorQuantize(nn.Module):
         if node_mask is not None:
             embed_onehot = F.one_hot(embed_ind, self.codebook_size).type(x.dtype).squeeze(0)
             node_mask = rearrange(node_mask, '... -> (...)').unsqueeze(-1)
+
+            # Only average over valid nodes
+            n_valid = node_mask.sum()
             embed_onehot = embed_onehot * node_mask
-            avg_probs = torch.mean(embed_onehot, dim=0)  # (K,)
+            avg_probs = embed_onehot.sum(0) / n_valid.clamp(min=1)
+            # avg_probs = torch.mean(embed_onehot, dim=0)  # (K,)
             perplexity = torch.exp(-torch.sum(avg_probs * torch.log(avg_probs + 1e-10)))
 
         embed_ind = embed_ind.view(*shape[:-1])
@@ -625,7 +702,11 @@ class VectorQuantize(nn.Module):
                 rand_ids = torch.randperm(num_codes, device=device)[:self.orthogonal_reg_max_codes]
                 codebook = codebook[rand_ids]
 
-            orthogonal_reg_loss = orthgonal_loss_fn(codebook)
+            if self.use_hyperbolic:
+                orthogonal_reg_loss = hyperbolic_orthogonal_loss_fn(codebook, self.manifold)
+            else:
+                orthogonal_reg_loss = orthgonal_loss_fn(codebook)
+            # orthogonal_reg_loss = orthgonal_loss_fn(codebook)
             vq_loss['orthogonal_reg_loss'] = orthogonal_reg_loss
             vq_loss['loss'] = vq_loss['loss'] + orthogonal_reg_loss * self.orthogonal_reg_weight
 

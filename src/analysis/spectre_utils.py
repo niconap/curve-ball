@@ -894,7 +894,7 @@ class SpectreSamplingMetrics(nn.Module):
             return {"negative_valid_orbit": - to_log['orbit_valid'],
                     "negative_valid_degree":  - to_log['degree_valid'],
                     "negative_valid_clustering":  - to_log['clustering_valid']}
-        return to_log
+        # return to_log
 
     def reset(self):
         pass

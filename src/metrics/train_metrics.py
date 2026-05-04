@@ -372,8 +372,8 @@ class HGVAETrainLoss(nn.Module):
         if log:
             to_log = {f'{self.stage}/batch_loss': loss.detach(),
                     f'{self.stage}/euc2node_CE': euc2node_CE,
-                    f'{self.stage}/hyp2node_CE': euc2edge_CE,
-                    f'{self.stage}/euc2edge_CE': hyp2node_CE,
+                    f'{self.stage}/euc2edge_CE': euc2edge_CE,
+                    f'{self.stage}/hyp2node_CE': hyp2node_CE,
                     f'{self.stage}/hyp2edge_CE': hyp2edge_CE,
                     f'{self.stage}/consistency_node_loss': consistency_node_loss,
                     f'{self.stage}/consistency_edge_loss': consistency_edge_loss,

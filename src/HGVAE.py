@@ -538,14 +538,14 @@ class HGVAE(pl.LightningModule):
             reconstruct_E = torch.zeros_like(
                 euc2edge_feat) if euc2edge_feat is not None else torch.zeros_like(hyp2edge_feat)
             if euc2node_feat is not None:
-                reconstruct_x += euc2node_feat * self.cfg.loss.lambda_euc2node
+                reconstruct_x += euc2node_feat #* self.cfg.loss.lambda_euc2node
             if hyp2node_feat is not None:
-                reconstruct_x += hyp2node_feat * self.cfg.loss.lambda_hyp2node
+                reconstruct_x += hyp2node_feat #* self.cfg.loss.lambda_hyp2node
 
             if euc2edge_feat is not None:
-                reconstruct_E += euc2edge_feat * self.cfg.loss.lambda_euc2edge
+                reconstruct_E += euc2edge_feat #* self.cfg.loss.lambda_euc2edge
             if hyp2edge_feat is not None:
-                reconstruct_E += hyp2edge_feat * self.cfg.loss.lambda_hyp2edge
+                reconstruct_E += hyp2edge_feat #* self.cfg.loss.lambda_hyp2edge
 
             self.train_metrics(masked_pred_X=reconstruct_x, masked_pred_E=reconstruct_E, true_X=node_labels, true_E=edge_labels,
                                log=batch_idx % self.log_every_steps == 0)
@@ -579,10 +579,12 @@ class HGVAE(pl.LightningModule):
                     reconstruct_x = euc2node_feat
                     reconstruct_E = euc2edge_feat
                 else:
-                    reconstruct_x = euc2node_feat * self.cfg.loss.lambda_euc2node + \
-                        hyp2node_feat * self.cfg.loss.lambda_hyp2node
-                    reconstruct_E = euc2edge_feat * self.cfg.loss.lambda_euc2edge + \
-                        hyp2edge_feat * self.cfg.loss.lambda_hyp2edge
+                    # reconstruct_x = euc2node_feat * self.cfg.loss.lambda_euc2node + \
+                    #     hyp2node_feat * self.cfg.loss.lambda_hyp2node
+                    # reconstruct_E = euc2edge_feat * self.cfg.loss.lambda_euc2edge + \
+                    #     hyp2edge_feat * self.cfg.loss.lambda_hyp2edge
+                    reconstruct_x = euc2node_feat +  hyp2node_feat
+                    reconstruct_E = euc2edge_feat + hyp2edge_feat 
                 self.train_metrics(masked_pred_X=reconstruct_x, masked_pred_E=reconstruct_E, true_X=node_labels, true_E=edge_labels,
                                    log=batch_idx % self.log_every_steps == 0)
 
@@ -951,10 +953,12 @@ class HGVAE(pl.LightningModule):
                     reconstruct_x = euc2node_feat
                     reconstruct_E = euc2edge_feat
                 else:
-                    reconstruct_x = euc2node_feat * self.cfg.loss.lambda_euc2node + \
-                        hyp2node_feat * self.cfg.loss.lambda_hyp2node
-                    reconstruct_E = euc2edge_feat * self.cfg.loss.lambda_euc2edge + \
-                        hyp2edge_feat * self.cfg.loss.lambda_hyp2edge
+                    # reconstruct_x = euc2node_feat * self.cfg.loss.lambda_euc2node + \
+                    #     hyp2node_feat * self.cfg.loss.lambda_hyp2node
+                    # reconstruct_E = euc2edge_feat * self.cfg.loss.lambda_euc2edge + \
+                    #     hyp2edge_feat * self.cfg.loss.lambda_hyp2edge
+                    reconstruct_x = euc2node_feat + hyp2node_feat 
+                    reconstruct_E = euc2edge_feat + hyp2edge_feat
                 self.train_metrics(masked_pred_X=reconstruct_x, masked_pred_E=reconstruct_E, true_X=node_labels, true_E=edge_labels,
                                    log=batch_idx % self.log_every_steps == 0,)
 
@@ -1122,15 +1126,15 @@ class HGVAE(pl.LightningModule):
                     euc2edge_feat) if euc2edge_feat is not None else torch.zeros_like(hyp2edge_feat)
 
                 # Add the corresponding features, only if they are not None
-                if euc2node_feat is not None:
-                    reconstruct_x += euc2node_feat * self.cfg.loss.lambda_euc2node
-                if hyp2node_feat is not None:
-                    reconstruct_x += hyp2node_feat * self.cfg.loss.lambda_hyp2node
+                if euc2node_feat is not None and self.cfg.loss.lambda_euc2node > 0.001:
+                    reconstruct_x += euc2node_feat #* self.cfg.loss.lambda_euc2node
+                if hyp2node_feat is not None and self.cfg.loss.lambda_hyp2node > 0.001:
+                    reconstruct_x += hyp2node_feat #* self.cfg.loss.lambda_hyp2node
 
-                if euc2edge_feat is not None:
-                    reconstruct_E += euc2edge_feat * self.cfg.loss.lambda_euc2edge
-                if hyp2edge_feat is not None:
-                    reconstruct_E += hyp2edge_feat * self.cfg.loss.lambda_hyp2edge
+                if euc2edge_feat is not None and self.cfg.loss.lambda_euc2edge > 0.001:
+                    reconstruct_E += euc2edge_feat #* self.cfg.loss.lambda_euc2edge
+                if hyp2edge_feat is not None and self.cfg.loss.lambda_hyp2edge > 0.001:
+                    reconstruct_E += hyp2edge_feat #* self.cfg.loss.lambda_hyp2edge
 
                 # 检查重建结果是否有NaN
                 if torch.isnan(reconstruct_x).any() or torch.isnan(reconstruct_E).any():

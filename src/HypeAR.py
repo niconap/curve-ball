@@ -265,7 +265,7 @@ class ManifoldARLitModule(pl.LightningModule):
             sched_euc, sched_hyp = self.lr_schedulers()
     
             self.log("lr_euc", sched_euc.get_last_lr()[0], prog_bar=True)
-            self.log("lr_hyp", sched_hyp.get_last_lr()[0], prog_bar=False)
+            self.log("lr_hyp", sched_hyp.get_last_lr()[0], prog_bar=True)
 
         _, node_mask, node_feat, edge_feat = self.encode(batch)
                 

@@ -91,6 +91,24 @@ class MolecularVisualization:
             except rdkit.Chem.KekulizeException:
                 print("Can't kekulize molecule")
 
+        # # Save smiles instead of images
+        # num_molecules_to_visualize = min(num_molecules_to_visualize, len(molecules))
+        # print(f"Visualizing {num_molecules_to_visualize} of {len(molecules)}")
+
+        # smiles_list = []
+        # for i in range(num_molecules_to_visualize):
+        #     mol = self.mol_from_graphs(molecules[i][0].numpy(), molecules[i][1].numpy())
+        #     try:
+        #         Chem.SanitizeMol(mol)
+        #         smi = Chem.MolToSmiles(mol)
+        #         smiles_list.append(smi)
+        #     except (Chem.KekulizeException, ValueError):
+        #         pass
+        #         # print("Can't kekulize molecule")
+
+        # if wandb.run and log is not None:
+        #     wandb.log({log: wandb.Table(columns=["SMILES"], data=[[s] for s in smiles_list])})
+
     # def visualize_interpolate(self, path: str, molecules: list, num_molecules_to_visualize: int, log='graph'):
 
     def calc_props(self,mol):

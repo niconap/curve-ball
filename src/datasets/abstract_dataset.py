@@ -13,6 +13,7 @@ class AbstractDataModule(LightningDataset):
                          num_workers=cfg.train.num_workers,
                          pin_memory=getattr(cfg.dataset, "pin_memory", False))
         self.cfg = cfg
+        self.batch_size = cfg.train.batch_size if 'debug' not in cfg.general.name else 2
         self.input_dims = None
         self.output_dims = None
 

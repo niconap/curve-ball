@@ -8,6 +8,7 @@ from src import utils
 from pytorch_lightning.utilities.warnings import PossibleUserWarning
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning import Trainer, seed_everything
+from pytorch_lightning.tuner import Tuner 
 from omegaconf import DictConfig
 import hydra
 import torch
@@ -180,7 +181,8 @@ def main(cfg: DictConfig):
     use_gpu = cfg.general.gpus > 0 and torch.cuda.is_available()
     wandb_logger = setup_wandb_logger(cfg)
     hyper_trainer = Trainer(  # gradient_clip_val=cfg.train.clip_grad,
-        strategy="ddp_find_unused_parameters_true",  # Needed to load old checkpoints
+        # strategy="ddp_find_unused_parameters_true",  # Needed to load old checkpoints
+        strategy="auto",  # Needed to load old checkpoints
         accelerator='gpu' if use_gpu else 'cpu',
         devices=cfg.general.gpus if use_gpu else 1,
         max_epochs=cfg.train.n_epochs,
@@ -190,6 +192,8 @@ def main(cfg: DictConfig):
         callbacks=callbacks,
         log_every_n_steps=50 if name != 'debug' else 1,
         logger=wandb_logger)
+    # tuner = Tuner(hyper_trainer) # Uncomment to find optimal batch size
+    # tuner.scale_batch_size(hyper_model, datamodule=datamodule, mode='power')
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     hyper_model = hyper_model.to(device)

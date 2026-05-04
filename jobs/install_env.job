@@ -1,0 +1,220 @@
+#!/bin/bash
+#SBATCH --job-name=env_install
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=9
+#SBATCH --time=12:00:00
+#SBATCH --output=outputs/env_install%j.out
+#SBATCH --error=outputs/env_install%j.err
+module load 2024
+module load Miniconda3/24.7.1-0
+module load Mamba/24.9.0-0
+
+set -euo pipefail
+
+# -----------------------------
+# Config (override via sbatch --export=...)
+# -----------------------------
+ENV_NAME="${ENV_NAME:-ggball}"
+PYTHON_VERSION="${PYTHON_VERSION:-3.9}"
+RDKIT_VERSION="${RDKIT_VERSION:-2023.03.2}"
+GRAPH_TOOL_VERSION="${GRAPH_TOOL_VERSION:-2.45}"
+CUDA_LABEL="${CUDA_LABEL:-cuda-11.8.0}"
+TORCH_VERSION="${TORCH_VERSION:-2.0.1}"
+
+# -----------------------------
+# Helpers
+# -----------------------------
+log() {
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+}
+
+run_pkg_install() {
+  local retries=3
+  local delay=20
+  local n=1
+  while true; do
+    if mamba install -y "$@"; then
+      break
+    fi
+    if [[ $n -ge $retries ]]; then
+      log "mamba install failed after ${retries} attempts: $*"
+      return 1
+    fi
+    log "mamba install failed (attempt ${n}/${retries}); retrying in ${delay}s..."
+    n=$((n + 1))
+    sleep "$delay"
+  done
+}
+
+run_base_mamba_install() {
+  local retries=3
+  local delay=20
+  local n=1
+  while true; do
+    if mamba install -y -n base -c conda-forge "$@"; then
+      break
+    fi
+    if [[ $n -ge $retries ]]; then
+      log "base mamba install failed after ${retries} attempts: $*"
+      return 1
+    fi
+    log "base mamba install failed (attempt ${n}/${retries}); retrying in ${delay}s..."
+    n=$((n + 1))
+    sleep "$delay"
+  done
+}
+
+run_pip_install() {
+  local retries=3
+  local delay=20
+  local n=1
+  while true; do
+    if pip install "$@"; then
+      break
+    fi
+    if [[ $n -ge $retries ]]; then
+      log "pip install failed after ${retries} attempts: $*"
+      return 1
+    fi
+    log "pip install failed (attempt ${n}/${retries}); retrying in ${delay}s..."
+    n=$((n + 1))
+    sleep "$delay"
+  done
+}
+
+# -----------------------------
+# Paths and environment init
+# -----------------------------
+REPO_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
+cd "$REPO_DIR"
+mkdir -p outputs
+
+# shellcheck disable=SC1091
+source "$(conda info --base)/etc/profile.d/conda.sh"
+
+if ! command -v mamba >/dev/null 2>&1; then
+  log "mamba is not available on PATH; aborting."
+  exit 1
+fi
+
+log "Repository: $REPO_DIR"
+log "Conda env: $ENV_NAME"
+log "Package manager: mamba"
+
+# Select env spec with preference for requirements.yaml, then yml alternatives.
+ENV_SPEC=""
+for f in requirements.yaml requirements.yml environment.yml; do
+  if [[ -f "$f" ]]; then
+    ENV_SPEC="$f"
+    break
+  fi
+done
+
+rename_existing_env() {
+  if mamba env list | awk '{print $1}' | grep -qx "$ENV_NAME"; then
+    local RENAME_TARGET="${ENV_NAME}-$(date '+%Y%m%d-%H%M%S')"
+    log "Env already exists; renaming $ENV_NAME -> $RENAME_TARGET"
+    conda rename -n "$ENV_NAME" "$RENAME_TARGET"
+  fi
+}
+
+if [[ -z "$ENV_SPEC" ]]; then
+  log "No requirements.yaml/requirements.yml/environment.yml found; creating minimal env."
+  rename_existing_env
+  mamba create -y -n "$ENV_NAME" "python=${PYTHON_VERSION}" pip
+else
+  log "Using env spec: $ENV_SPEC"
+  rename_existing_env
+  log "Creating env from $ENV_SPEC"
+  mamba env create -n "$ENV_NAME" -f "$ENV_SPEC"
+fi
+
+conda activate "$ENV_NAME"
+export PYTHONPATH="${PYTHONPATH:-}:$REPO_DIR:$REPO_DIR/src/models/hyperbolic_nn_plusplus"
+
+# Prefer conda's C++ runtime to avoid GLIBCXX mismatches on HPC nodes.
+export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
+
+# -----------------------------
+# Core package installation/checks
+# -----------------------------
+log "Installing rdkit"
+run_pkg_install -c conda-forge "rdkit=${RDKIT_VERSION}"
+
+log "Checking rdkit import"
+python3 -c 'from rdkit import Chem' || { log "[FAIL] rdkit import failed"; exit 1; }
+log "[OK] rdkit"
+
+log "Installing graph-tool"
+run_pkg_install -c conda-forge "graph-tool=${GRAPH_TOOL_VERSION}"
+
+log "Checking graph-tool import"
+python3 -c 'import graph_tool as gt' || { log "[FAIL] graph-tool import failed"; exit 1; }
+log "[OK] graph-tool"
+
+log "Installing CUDA toolkit label package (optional on some clusters)"
+run_pkg_install -c "nvidia/label/${CUDA_LABEL}" cuda || log "CUDA label package install skipped/failed; continuing."
+
+log "Installing PyTorch ${TORCH_VERSION} (cu118 wheel)"
+run_pip_install --upgrade "torch==${TORCH_VERSION}" --index-url https://download.pytorch.org/whl/cu118
+
+if [[ -f requirements.txt ]]; then
+  log "Installing requirements.txt"
+  run_pip_install -r requirements.txt
+else
+  log "requirements.txt not found; skipping."
+fi
+
+log "Installing geoopt"
+run_pip_install --upgrade geoopt
+
+log "Installing PyG wheels compatible with torch/cu118"
+run_pip_install --upgrade \
+  pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv \
+  -f https://data.pyg.org/whl/torch-2.0.1+cu118.html
+
+log "Installing project in editable mode"
+run_pip_install -e .
+
+# -----------------------------
+# Validate key imports
+# -----------------------------
+log "Validating imports"
+python3 - <<'PY'
+import sys
+mods = [
+    ("rdkit", "from rdkit import Chem"),
+    ("graph_tool", "import graph_tool as gt"),
+    ("torch", "import torch"),
+    ("sklearn", "import sklearn"),
+    ("networkx", "import networkx"),
+    ("scipy", "import scipy"),
+]
+for name, stmt in mods:
+    try:
+        exec(stmt, {})
+        print(f"[OK] {name}")
+    except Exception as e:
+        print(f"[FAIL] {name}: {e}")
+        sys.exit(1)
+print("[OK] import validation complete")
+PY
+
+# -----------------------------
+# Compile ORCA
+# -----------------------------
+if [[ -f src/analysis/orca/orca ]]; then
+  log "Existing ORCA binary found; deleting src/analysis/orca/orca"
+  rm -f src/analysis/orca/orca
+fi
+
+if [[ -f src/analysis/orca/orca.cpp ]]; then
+  log "Compiling ORCA"
+  (cd src/analysis/orca && g++ -O2 -std=c++11 -o orca orca.cpp)
+else
+  log "src/analysis/orca/orca.cpp not found; skipping ORCA compile."
+fi
+
+log "Environment bootstrap completed successfully (no training executed)."
