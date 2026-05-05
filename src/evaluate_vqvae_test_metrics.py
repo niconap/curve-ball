@@ -134,6 +134,7 @@ def main(cfg: DictConfig):
     device = torch.device("cuda:0" if cfg.general.gpus > 0 and torch.cuda.is_available() else "cpu")
     model = model.to(device)
     model.eval()
+    model.print = print
 
     total_samples = int(cfg.general.final_model_samples_to_generate)
     if total_samples <= 0:
