@@ -29,6 +29,14 @@ def create_folders(args):
     except OSError:
         pass
 
+def append_curvature_to_run_name(cfg):
+    """Append curvature to run/checkpoint base name once."""
+    c_value = cfg.model.get('c', None)
+    curvature_tag = f"c{c_value}" if c_value is not None else "ctrainable"
+    if curvature_tag in cfg.general.name:
+        return
+    cfg.general.name = f"{cfg.general.name}_{curvature_tag}"
+
 
 def normalize(X, E, y, norm_values, norm_biases, node_mask):
     X = (X - norm_biases[0]) / norm_values[0]

@@ -31,6 +31,7 @@ warnings.filterwarnings("ignore", category=PossibleUserWarning)
 @hydra.main(version_base='1.3', config_path='../configs', config_name='config')
 def main(cfg: DictConfig):
     dataset_config = cfg["dataset"]
+    utils.append_curvature_to_run_name(cfg)
 
     seed_everything(cfg.train.seed)
 

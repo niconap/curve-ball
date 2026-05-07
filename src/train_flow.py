@@ -115,6 +115,7 @@ def build_callbacks(cfg: DictConfig) -> List[Callback]:
 def main(cfg: DictConfig):
     glob_cfg = cfg
     cfg = glob_cfg.flow_train
+    utils.append_curvature_to_run_name(glob_cfg)
     if cfg.train.deterministic:
         seed_everything(cfg.train.random_seed)
     
