@@ -1,6 +1,6 @@
 # @package _global_
 general:
-    name : 'ego_small_${loss.name}_${loss.codebook_size}code_hyp${model.hyp_channels}_euc${model.euc_channels}_decode_${model.decode_method}decode'
+    name: 'ego_small_${loss.name}_${loss.codebook_size}code_hyp${model.hyp_channels}_euc${model.euc_channels}_decode_${model.decode_method}decode_c${model.c}'
     gpus : 1
     wandb: 'online'
     resume: null            # If resume, path to ckpt file from outputs directory in main directory
