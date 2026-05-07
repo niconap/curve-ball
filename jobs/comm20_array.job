@@ -38,7 +38,29 @@ CURVATURE=${CURVATURES[$SLURM_ARRAY_TASK_ID]}
 echo "Array task ${SLURM_ARRAY_TASK_ID} / curvature ${CURVATURE}"
 #sleep $((SLURM_ARRAY_TASK_ID * 30))
 
-# 4. Execution
+# 4. Optional args
+DISABLE_TRANSFORMER=false
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --disable-transformer)
+      DISABLE_TRANSFORMER=true
+      shift
+      ;;
+    *)
+      echo "Unknown argument: $1"
+      echo "Usage: sbatch $0 [--disable-transformer]"
+      exit 1
+      ;;
+  esac
+done
+
+HYPFORMER_OVERRIDES=""
+if [[ "${DISABLE_TRANSFORMER}" == "true" ]]; then
+  HYPFORMER_OVERRIDES="model.transformer_encoder.Hypformer_use=false model.transformer_decoder.Hypformer_use=false"
+  echo "Transformer disabled via --disable-transformer."
+fi
+
+# 5. Execution
 time python3 src/main.py \
    +experiment=comm20_hyp \
    dataset=comm20 \
@@ -67,4 +89,5 @@ time python3 src/main.py \
    train.lr_scheduler.T_max=30000 \
    loss.use_kmeans=True \
    model.sample_codebook_temp=0.1 \
-   loss.lambda_orthogonal_reg_weight=0.3
+   loss.lambda_orthogonal_reg_weight=0.3 \
+   ${HYPFORMER_OVERRIDES}
