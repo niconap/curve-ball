@@ -1,0 +1,75 @@
+#!/bin/bash
+#SBATCH --job-name=qm9_flow
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=9
+#SBATCH --time=24:00:00
+#SBATCH --array=0-4
+#SBATCH --output=outputs/qm9_flow_%A_%a.out
+#SBATCH --error=outputs/qm9_flow_%A_%a.err
+
+set -euo pipefail
+
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load Mamba/24.9.0-0
+
+source activate HypeFlow
+export PYTHONPATH=$PYTHONPATH:$(pwd):$(pwd)/src/models/hyperbolic_nn_plusplus
+
+export WANDB_START_METHOD=thread
+export WANDB_SILENT=true
+export WANDB_API_KEY="${WANDB_API_KEY:-}"
+if [ -n "${WANDB_API_KEY}" ]; then
+  export WANDB_MODE=online
+  WANDB_LOG_MODE=online
+  echo "WANDB_API_KEY detected: using online mode."
+else
+  export WANDB_MODE=offline
+  WANDB_LOG_MODE=offline
+  echo "WANDB_API_KEY not set: using offline mode."
+fi
+
+CURVATURES=(0.1 0.5 1.0 2.5 5.0)
+QM9_VAE_CHECKPOINTS=(
+  "/path/to/qm9_c0.1.ckpt"
+  "/path/to/qm9_c0.5.ckpt"
+  "/path/to/qm9_c1.0.ckpt"
+  "/path/to/qm9_c2.5.ckpt"
+  "/path/to/qm9_c5.0.ckpt"
+)
+
+FLOW_CHECKPOINT="${FLOW_CHECKPOINT:-None}"
+TEST_ONLY="${TEST_ONLY:-false}"
+
+IDX="${SLURM_ARRAY_TASK_ID}"
+CURVATURE="${CURVATURES[$IDX]}"
+VAE_CHECKPOINT="${QM9_VAE_CHECKPOINTS[$IDX]}"
+
+if [[ "${VAE_CHECKPOINT}" == /path/to/* ]] || [ ! -f "${VAE_CHECKPOINT}" ]; then
+  echo "Invalid VQ-VAE checkpoint for index=${IDX}: ${VAE_CHECKPOINT}"
+  echo "Please replace placeholder paths in jobs/qm9_flow_array.job."
+  exit 1
+fi
+
+echo "Array task ${IDX} / curvature ${CURVATURE}"
+echo "VQ-VAE checkpoint: ${VAE_CHECKPOINT}"
+echo "Flow checkpoint: ${FLOW_CHECKPOINT}"
+echo "Test only: ${TEST_ONLY}"
+
+time python3 src/train_flow.py \
+  +experiment=qm9 \
+  dataset=qm9 \
+  loss=VQVAE \
+  model.c="${CURVATURE}" \
+  model.k_in="${CURVATURE}" \
+  model.k_hidden="${CURVATURE}" \
+  model.k_out="${CURVATURE}" \
+  model.k_poin_out="$(awk "BEGIN {print 1/${CURVATURE}}")" \
+  general.wandb="${WANDB_LOG_MODE}" \
+  dataset.debug=false \
+  flow_train.VAE_checkpoint="${VAE_CHECKPOINT}" \
+  flow_train.Flow_checkpoint="${FLOW_CHECKPOINT}" \
+  flow_train.test_only="${TEST_ONLY}"
