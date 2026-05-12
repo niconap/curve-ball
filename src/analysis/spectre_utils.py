@@ -891,9 +891,12 @@ class SpectreSamplingMetrics(nn.Module):
             wandb.log(to_log, commit=False)
             
         if not test:
-            return {"negative_valid_orbit": - to_log['orbit_valid'],
-                    "negative_valid_degree":  - to_log['degree_valid'],
-                    "negative_valid_clustering":  - to_log['clustering_valid']}
+            orbit_key = f'orbit_{stage}'
+            degree_key = f'degree_{stage}'
+            clustering_key = f'clustering_{stage}'
+            return {"negative_valid_orbit": - to_log[orbit_key],
+                    "negative_valid_degree":  - to_log[degree_key],
+                    "negative_valid_clustering":  - to_log[clustering_key]}
         return to_log
 
     def reset(self):
