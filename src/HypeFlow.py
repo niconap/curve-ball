@@ -543,8 +543,10 @@ class ManifoldFMLitModule(pl.LightningModule):
                 return x_t, u_t
                     
 
-            # x_t, u_t = cond_u(x0, x1, t)
-            x_t, u_t = vmap(cond_u)(x0, x1, t)
+            # Avoid functorch vmap here: geoopt logmap/expmap can fail on BatchedTensor.
+            x_t_u_t = [cond_u(x0_i, x1_i, t_i) for x0_i, x1_i, t_i in zip(x0, x1, t)]
+            x_t = torch.stack([xt for xt, _ in x_t_u_t], dim=0)
+            u_t = torch.stack([ut for _, ut in x_t_u_t], dim=0)
             x_t = x_t.reshape(N, MAX_NODES, -1)
             u_t = u_t.reshape(N, MAX_NODES, -1)
 
@@ -624,9 +626,10 @@ class ManifoldFMLitModule(pl.LightningModule):
                 x_t, u_t = jvp(lambda t: path(self.scheduler(t).alpha_t), (t,), (torch.ones_like(t).to(t),))
                 return x_t, u_t
 
-            # x_t, u_t = cond_u(x0, x1, t)
-            
-            x_t, u_t = vmap(cond_u)(x0, x1, t)
+            # Avoid functorch vmap here: geoopt logmap/expmap can fail on BatchedTensor.
+            x_t_u_t = [cond_u(x0_i, x1_i, t_i) for x0_i, x1_i, t_i in zip(x0, x1, t)]
+            x_t = torch.stack([xt for xt, _ in x_t_u_t], dim=0)
+            u_t = torch.stack([ut for _, ut in x_t_u_t], dim=0)
             x_t = x_t.reshape(N, MAX_NODES, -1)
             u_t = u_t.reshape(N, MAX_NODES, -1)
             u_t = self.product_manifold.proju(x_t, u_t)
