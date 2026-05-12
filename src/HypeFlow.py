@@ -538,8 +538,10 @@ class ManifoldFMLitModule(pl.LightningModule):
             t = torch.rand(N).reshape(-1, 1).to(x1)
             # unsqueeze(2).repeat(1, MAX_NODES, 1).
             def cond_u(x0, x1, t):
-                path = geodesic(self.hyp_manifold, x0, x1)
-                x_t, u_t = jvp(lambda t: path(self.scheduler(t).alpha_t), (t,), (torch.ones_like(t).to(t),))
+                alpha_t = self.scheduler(t).alpha_t
+                shooting_tangent_vec = self.hyp_manifold.logmap(x0, x1)
+                x_t = self.hyp_manifold.expmap(x0, alpha_t * shooting_tangent_vec)
+                u_t = self.hyp_manifold.logmap(x_t, x1)
                 return x_t, u_t
                     
 
@@ -622,8 +624,10 @@ class ManifoldFMLitModule(pl.LightningModule):
             t = torch.rand(N).reshape(-1, 1).to(x1)
             # unsqueeze(2).repeat(1, MAX_NODES, 1).
             def cond_u(x0, x1, t):
-                path = geodesic(self.product_manifold, x0, x1)
-                x_t, u_t = jvp(lambda t: path(self.scheduler(t).alpha_t), (t,), (torch.ones_like(t).to(t),))
+                alpha_t = self.scheduler(t).alpha_t
+                shooting_tangent_vec = self.product_manifold.logmap(x0, x1)
+                x_t = self.product_manifold.expmap(x0, alpha_t * shooting_tangent_vec)
+                u_t = self.product_manifold.logmap(x_t, x1)
                 return x_t, u_t
 
             # Avoid functorch vmap here: geoopt logmap/expmap can fail on BatchedTensor.
