@@ -518,10 +518,14 @@ class ManifoldFMLitModule(pl.LightningModule):
     def rfm_loss_fn(self, batch: torch.Tensor):
         if self.use_riemannian_optimizer and self.trainer.training:
             opt_euc, opt_hyp = self.optimizers()
-            sched_euc, sched_hyp = self.lr_schedulers()
-    
-            self.log("lr_euc", sched_euc.get_last_lr()[0], prog_bar=True)
-            self.log("lr_hyp", sched_hyp.get_last_lr()[0], prog_bar=False)
+            schedulers = self.lr_schedulers()
+            if not isinstance(schedulers, (list, tuple)):
+                schedulers = [schedulers] if schedulers is not None else []
+
+            if len(schedulers) > 0 and schedulers[0] is not None:
+                self.log("lr_euc", schedulers[0].get_last_lr()[0], prog_bar=True)
+            if len(schedulers) > 1 and schedulers[1] is not None:
+                self.log("lr_hyp", schedulers[1].get_last_lr()[0], prog_bar=False)
         # import pdb; pdb.set_trace()
         if isinstance(batch, dict):
             x0 = batch["x0"]
@@ -737,9 +741,16 @@ class ManifoldFMLitModule(pl.LightningModule):
         for train_metric in self.train_metrics.values():
             train_metric.reset()
 
-        sched_euc, sched_hyp = self.lr_schedulers()
-        sched_euc.step()
-        sched_hyp.step()
+        if not self.use_riemannian_optimizer:
+            return
+
+        schedulers = self.lr_schedulers()
+        if not isinstance(schedulers, (list, tuple)):
+            schedulers = [schedulers] if schedulers is not None else []
+
+        for scheduler in schedulers:
+            if scheduler is not None:
+                scheduler.step()
 
     def shared_eval_step(
         self,
