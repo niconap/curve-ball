@@ -899,7 +899,7 @@ class ManifoldFMLitModule(pl.LightningModule):
             # get first batch
             for batch in val_loader:
                 self.VAE.test_interpolate(batch)
-            pdb.set_trace()
+            # pdb.set_trace()
             start = time.time()
             samples_left_to_generate = self.glob_cfg.general.samples_to_generate
             samples = []
