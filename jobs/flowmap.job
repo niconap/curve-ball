@@ -1,0 +1,52 @@
+#!/bin/bash
+#SBATCH --job-name=flowmap
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=9
+#SBATCH --time=01:00:00
+#SBATCH --output=outputs/flowmap_%j.out
+#SBATCH --error=outputs/flowmap_%j.err
+
+# 1. Environment
+module load 2024
+module load Miniconda3/24.7.1-0
+module load Mamba/24.9.0-0
+source activate HypeFlow
+
+# Assuming hypeflow is in your standard conda envs or specify full path like the reference
+# If it resides in /opt/conda on your cluster, use your original target lines instead:
+# source /opt/conda/bin/activate
+# conda activate hypeflow
+
+export PYTHONPATH="$(pwd):$(pwd)/src/models/hyperbolic_nn_plusplus:$PYTHONPATH"
+
+# 2. Arguments
+# EXPERIMENT=${1:-comm20_hyp}
+# DATASET=${2:-comm20}
+# CHECKPOINT_PATH=${3}
+
+# if [ -z "${CHECKPOINT_PATH}" ]; then
+#   echo "Usage: sbatch $0 <experiment> <dataset> <checkpoint_path>"
+#   echo "Example: sbatch $0 comm20_hyp comm20 /path/to/last.ckpt"
+#   exit 1
+# fi
+
+# echo "Evaluating EXPERIMENT: ${EXPERIMENT}, DATASET: ${DATASET}"
+# echo "Using Checkpoint: ${CHECKPOINT_PATH}"
+VAE_CHECKPOINT=$1
+
+# 3. Execution
+time python src/train_flow.py \
+  +experiment=ego_small_hyp \
+  dataset=ego_small \
+  loss=VQVAE \
+  model.hyp_channels=64 \
+  model.latent_channels=64 \
+  model.euc_channels=0 \
+  general.wandb=disabled \
+  # flow_train.VAE_checkpoint_path=${VAE_CHECKPOINT} \
+  flow_train.VAE_checkpoint_path=${VAE_CHECKPOINT} \
+
+  #/
+  

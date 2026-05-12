@@ -1,0 +1,74 @@
+#!/bin/bash
+#SBATCH --job-name=hgcn_ego_small
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=9
+#SBATCH --time=24:00:00
+#SBATCH --output=outputs/ego_small_hgcn%j.out
+#SBATCH --error=outputs/ego_small_hgcn%j.err
+
+set -eo pipefail
+mkdir -p outputs
+
+# Usage:
+#   sbatch jobs/ego_small_hgcn.job [CURVATURE] [RESUME_CKPT]
+# Examples:
+#   sbatch jobs/ego_small_hgcn.job 0.1
+#   sbatch jobs/ego_small_hgcn.job 0.1 /absolute/path/to/checkpoints/last.ckpt
+
+# 1. Environment
+module purge
+module load 2024
+module load Miniconda3/24.7.1-0
+module load Mamba/24.9.0-0
+
+# Change this if your active environment is different.
+source activate HypeFlow
+export PYTHONPATH="${PYTHONPATH:-}:$(pwd):$(pwd)/src:$(pwd)/src/models/hyperbolic_nn_plusplus"
+
+# 2. WandB
+export WANDB_START_METHOD=thread
+export WANDB_SILENT=true
+if [ -n "${WANDB_API_KEY:-}" ]; then
+  export WANDB_MODE=online
+  WANDB_LOG_MODE=online
+  echo "WANDB_API_KEY detected: using online mode."
+else
+  export WANDB_MODE=offline
+  WANDB_LOG_MODE=offline
+  echo "WANDB_API_KEY not set: using offline mode."
+fi
+
+CURVATURE=${1:-0.1}
+RESUME_CKPT=${2:-null}
+
+echo "Using curvature: ${CURVATURE}"
+echo "Resume checkpoint: ${RESUME_CKPT}"
+
+# 3. Execution: hypergraph/HGCN version
+# Important switches:
+#   model=HGCN              -> loads configs/model/HGCN.yaml
+#   train.hyper_model=HGCN  -> src/main.py instantiates src.HGCN.HGCN
+#   general.resume=...      -> Lightning resume path; use null for scratch
+
+time python3 src/main_hgcn.py \
+  +experiment=ego_small_hyp \
+  dataset=ego_small \
+  model=HGCN \
+  loss=AE \
+  train.hyper_model=HGCN \
+  general.name=ego_small_hgcn_c${CURVATURE} \
+  general.wandb=${WANDB_LOG_MODE} \
+  general.resume=${RESUME_CKPT} \
+  dataset.debug=false \
+  model.use_poincare=true \
+  model.c=${CURVATURE} \
+  model.dim=64 \
+  model.num_layers=2 \
+  model.lambda_node=0.0 \
+  model.lambda_edge=0.0 \
+  train.batch_size=32 \
+  train.n_epochs=300 \
+  train.lr=0.0005 \
+  train.lr_scheduler.T_max=30000

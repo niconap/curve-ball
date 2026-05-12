@@ -4,10 +4,10 @@
 #SBATCH --gpus=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=9
-#SBATCH --time=12:00:00
+#SBATCH --time=32:00:00
 #SBATCH --array=0-4
-#SBATCH --output=outputs/vqvae_%A_%a.out
-#SBATCH --error=outputs/vqvae_%A_%a.err
+#SBATCH --output=outputs/ego_small_array_%A_%a.out
+#SBATCH --error=outputs/ego_small_array_%A_%a.err
 
 # 1. Environment
 module purge

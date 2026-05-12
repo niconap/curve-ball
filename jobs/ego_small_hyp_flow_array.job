@@ -9,8 +9,6 @@
 #SBATCH --output=outputs/ego_small_hyp_flow_%A_%a.out
 #SBATCH --error=outputs/ego_small_hyp_flow_%A_%a.err
 
-set -euo pipefail
-
 module purge
 module load 2024
 module load Miniconda3/24.7.1-0
@@ -34,11 +32,11 @@ fi
 
 CURVATURES=(0.1 0.5 1.0 2.5 5.0)
 EGO_SMALL_VAE_CHECKPOINTS=(
-  "/path/to/ego_small_c0.1.ckpt"
-  "/path/to/ego_small_c0.5.ckpt"
-  "/path/to/ego_small_c1.0.ckpt"
-  "/path/to/ego_small_c2.5.ckpt"
-  "/path/to/ego_small_c5.0.ckpt"
+  "/home/scur0096/outputs/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c0.1-ego_small/VAE/2026-05-09/14-49-00/checkpoints/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c0.1/last-v1.ckpt"
+  "/home/scur0096/outputs/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c0.5-ego_small/VAE/2026-05-09/14-48-45/checkpoints/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c0.5/last-v1.ckpt"
+  "/home/scur0096/outputs/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c1.0-ego_small/VAE/2026-05-09/14-48-45/checkpoints/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c1.0/last-v1.ckpt"
+  "/home/scur0096/outputs/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c2.5-ego_small/VAE/2026-05-09/14-48-45/checkpoints/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c2.5/last-v1.ckpt"
+  "/home/scur0096/outputs/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c5.0-ego_small/VAE/2026-05-09/14-48-45/checkpoints/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c5.0/last-v1.ckpt"
 )
 
 FLOW_CHECKPOINT="${FLOW_CHECKPOINT:-None}"
@@ -70,6 +68,9 @@ time python3 src/train_flow.py \
   model.k_poin_out="$(awk "BEGIN {print 1/${CURVATURE}}")" \
   general.wandb="${WANDB_LOG_MODE}" \
   dataset.debug=false \
+  model.hyp_channels=64 \
+  model.latent_channels=64 \
+  loss.codebook_size=32 \
   flow_train.VAE_checkpoint="${VAE_CHECKPOINT}" \
   flow_train.Flow_checkpoint="${FLOW_CHECKPOINT}" \
   flow_train.test_only="${TEST_ONLY}"
