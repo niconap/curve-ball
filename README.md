@@ -1,73 +1,19 @@
-# GGBall
+# Curve-ball
 
-## Environment installation
+## Environment installation (on an HPC)
 
-This code was tested with PyTorch 2.0.1, cuda 11.8 and torch\_geometrics 2.3.1
+This code was tested with PyTorch 2.0.1, cuda 11.8 and torch\_geometrics 2.3.1 and is based on the [GGBall](https://github.com/AI4Science-WestlakeU/GGBall) repository
 
-* Download anaconda/miniconda if needed
+Download anaconda/miniconda if needed and optionally install mamba. If you do not want to install mamba, edit `jobs/install_env.job` to install using `conda` instead.
 
-* Create a rdkit environment that directly contains rdkit:
-
-  `conda create -c conda-forge -n ggball rdkit=2023.03.2 python=3.9`
-
-* `conda activate ggball`
-
-* Check that this line does not return an error:
-
-  `python3 -c 'from rdkit import Chem'`
-
-* Install graph-tool (https://graph-tool.skewed.de/):
-
-  `conda install -c conda-forge graph-tool=2.45`
-
-* Check that this line does not return an error:
-
-  `python3 -c 'import graph_tool as gt' `
-
-* Install the nvcc drivers for your cuda version. For example:
-
-  `conda install -c "nvidia/label/cuda-11.8.0" cuda`
-
-* Install a corresponding version of pytorch, for example:
-
-  `pip3 install torch==2.0.1 --index-url https://download.pytorch.org/whl/cu118`
-
-* Install other packages using the requirement file:
-
-  `pip install -r requirements.txt`
-
-* Install Geoopt:
-
-  `pip install geoopt`
-
-* Install pyg:
-
-  ''' pip install pyg\_lib torch\_scatter torch\_sparse torch\_cluster torch\_spline\_conv -f https://data.pyg.org/whl/torch-2.0.1+cu118.html'''
-
-* Run:
-
-  `pip install -e .`
-
-* Navigate to the ./analysis/orca directory and compile orca.cpp:
-
-  `g++ -O2 -std=c++11 -o orca orca.cpp`
-
-Note: graph\_tool and torch\_geometric currently seem to conflict on MacOS, I have not solved this issue yet.
+Use the `jobs/install_env.job` file to install the environment. It might be necessary to change the `module load` commands to match with the HPC you are using.
 
 ## Run the code
 
-* All code about HAE or HVQVAE is currently launched through `python3 main.py`. Check hydra documentation (https://hydra.cc/) for overriding default parameters.
-* To run the debugging code: `python3 main.py dataset.debug=true`. We advise to try to run the debug mode first
-  before launching full experiments.
-* To run a code with poincare flow matching: `python3 train_flow.py`.
-* You can specify the dataset with `python3 main.py dataset=ego_small`. Look at `configs/dataset` for the list
-  of datasets that are currently available
+Many job files are provided in the `jobs` directory. Each job file runs a different experiment. See the name of each job file to determine which experiment it is.
 
-## Generated samples
+### Example: training for `comm20` for several curvatures
 
-We provide the generated samples for some of the models. If you have retrained a model from scratch for which the samples are
-not available yet, we would be very happy if you could send them to us!
-
-## Troubleshooting
-
-`PermissionError: [Errno 13] Permission denied: './GGBall/analysis/orca/orca'`: You probably did not compile orca.
+To perform a full training pipeline for the `comm20` dataset, run jobs in the following order:
+1. Start by running `comm20_array.job`, which starts five processes for training a HVQVAE, where each process uses a different curvature.
+2. The previous step should have generated checkpoints, which we can use to run `comm20_hyp_flow_array.job`. Make sure to edit this job file to match the paths to the checkpoints to your system and be careful to match the right checkpoint to the right curvature. This too will generate five processes, each using a different curvature.
