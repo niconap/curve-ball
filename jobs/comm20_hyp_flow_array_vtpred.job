@@ -32,11 +32,11 @@ fi
 
 CURVATURES=(0.1 0.5 1.0 2.5 5.0)
 COMM20_VAE_CHECKPOINTS=(
-  "/home/scur0096/outputs/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction-comm20/VAE/2026-05-09/14-48-45/checkpoints/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction_c0.1/last-v1.ckpt"
-  "/home/scur0096/outputs/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction-comm20/VAE/2026-05-09/14-48-45/checkpoints/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction_c0.5/last-v1.ckpt"
-  "/home/scur0096/outputs/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction-comm20/VAE/2026-05-09/14-48-45/checkpoints/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction_c1.0/last-v1.ckpt"
-  "/home/scur0096/outputs/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction-comm20/VAE/2026-05-09/14-48-45/checkpoints/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction_c2.5/last-v1.ckpt"
-  "/home/scur0096/outputs/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction-comm20/VAE/2026-05-09/14-48-45/checkpoints/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction_c5.0/last-v1.ckpt"
+  "~/outputs/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction-comm20/VAE/2026-05-09/14-48-45/checkpoints/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction_c0.1/last-v1.ckpt"
+  "~/outputs/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction-comm20/VAE/2026-05-09/14-48-45/checkpoints/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction_c0.5/last-v1.ckpt"
+  "~/outputs/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction-comm20/VAE/2026-05-09/14-48-45/checkpoints/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction_c1.0/last-v1.ckpt"
+  "~/outputs/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction-comm20/VAE/2026-05-09/14-48-45/checkpoints/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction_c2.5/last-v1.ckpt"
+  "~/outputs/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction-comm20/VAE/2026-05-09/14-48-45/checkpoints/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction_c5.0/last-v1.ckpt"
 )
 
 FLOW_CHECKPOINT="${FLOW_CHECKPOINT:-None}"

@@ -30,7 +30,7 @@ else
 fi
 
 # 3. Execution
-time /home/scur0096/.conda/envs/ggball/bin/python3 src/train_flow.py \
+time ~/.conda/envs/ggball/bin/python3 src/train_flow.py \
   +experiment=qm9 \
   dataset=qm9 \
   loss=VQVAE \

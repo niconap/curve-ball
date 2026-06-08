@@ -33,7 +33,7 @@ CURVATURE=$1
 echo "Using curvature ${CURVATURE}"
 
 # 3. Execution
-time /home/scur0096/.conda/envs/ggball/bin/python3 src/main.py \
+time ~/.conda/envs/ggball/bin/python3 src/main.py \
   +experiment=ego_small_hyp \
   dataset=ego_small \
   loss=AE \

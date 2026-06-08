@@ -50,9 +50,9 @@ fi
 
 # echo "Evaluating EXPERIMENT: ${EXPERIMENT}, DATASET: ${DATASET}"
 # echo "Using Checkpoint: ${CHECKPOINT_PATH}"
-# VAE_CHECKPOINT="/home/scur0096/outputs/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c1.0-ego_small/VAE/2026-05-12/09-35-38/hypeflow-ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c1.0/aagqgkwu/checkpoints/epoch\=43499-step\=43500.ckpt"
-# VAE_CHECKPOINT="/home/scur0096/outputs/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c1.0-ego_small/VAE/2026-05-12/09-35-38/hypeflow-ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c1.0/aagqgkwu/checkpoints/epoch=43499-step=43500.ckpt"
-VAE_CHECKPOINT="/home/scur0096/outputs/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c1.0-ego_small/VAE/2026-05-09/14-48-45/checkpoints/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c1.0/last-v1.ckpt"
+# VAE_CHECKPOINT="~/outputs/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c1.0-ego_small/VAE/2026-05-12/09-35-38/hypeflow-ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c1.0/aagqgkwu/checkpoints/epoch\=43499-step\=43500.ckpt"
+# VAE_CHECKPOINT="~/outputs/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c1.0-ego_small/VAE/2026-05-12/09-35-38/hypeflow-ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c1.0/aagqgkwu/checkpoints/epoch=43499-step=43500.ckpt"
+VAE_CHECKPOINT="~/outputs/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c1.0-ego_small/VAE/2026-05-09/14-48-45/checkpoints/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c1.0/last-v1.ckpt"
 
 # 3. Execution
 time python src/train_flow.py \
@@ -70,7 +70,7 @@ time python src/train_flow.py \
 
 
   # flow_train.integrate.method=use_flow_map
-  # flow_train.VAE_checkpoint=/home/scur0096/outputs/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c1.0-ego_small/VAE/2026-05-12/09-35-38/hypeflow-ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c1.0/aagqgkwu/checkpoints/epoch=43499-step=43500.ckpt\
+  # flow_train.VAE_checkpoint=~/outputs/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c1.0-ego_small/VAE/2026-05-12/09-35-38/hypeflow-ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c1.0/aagqgkwu/checkpoints/epoch=43499-step=43500.ckpt\
 
   # flow_train.VAE_checkpoint_path=${VAE_CHECKPOINT} \
 

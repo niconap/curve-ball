@@ -33,7 +33,7 @@ CURVATURE=$1
 echo "Using curvature ${CURVATURE}"
 
 # 3. Execution
-time /home/scur0096/.conda/envs/ggball/bin/python3 src/main.py \
+time ~/.conda/envs/ggball/bin/python3 src/main.py \
   +experiment=qm9 \
   dataset=qm9 \
   loss=VQVAE \

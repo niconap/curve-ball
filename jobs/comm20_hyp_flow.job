@@ -35,7 +35,7 @@ echo "Using curvature ${CURVATURE}"
 echo "Using VAE checkpoint ${VAE_CHECKPOINT}"
 
 # 3. Execution
-time /home/scur0096/.conda/envs/ggball/bin/python3 src/train_flow.py \
+time ~/.conda/envs/ggball/bin/python3 src/train_flow.py \
   +experiment=comm20_hyp \
   dataset=comm20 \
   loss=VQVAE \
