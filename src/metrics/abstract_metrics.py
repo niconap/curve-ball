@@ -91,7 +91,6 @@ class CrossEntropyMetric(Metric):
         super().__init__()
         self.add_state('total_ce', default=torch.tensor(0.), dist_reduce_fx="sum")
         self.add_state('total_samples', default=torch.tensor(0.), dist_reduce_fx="sum")
-        # self.weight = weight
 
     def update(self, preds: Tensor, target: Tensor, mask: Optional[Tensor] = None, weight: Optional[Tensor] = None) -> None:
         """ Update state with predictions and targets.
@@ -112,9 +111,6 @@ class CrossEntropyMetric(Metric):
         output = F.cross_entropy(preds, target, reduction='sum', weight=weight)
         self.total_ce += output
         self.total_samples += preds.size(0)
-
-        # self.total_ce = output
-        # self.total_samples = 0.0 * self.total_samples + max(preds.shape[0], 1)
 
     def compute(self):
         return self.total_ce / self.total_samples
@@ -236,8 +232,6 @@ class F1ScoreMetric(Metric):
         target = torch.argmax(target, dim=-1)  # Convert target to class indices
         preds = torch.softmax(preds, dim=-1)       # Convert logits to probabilities
         preds = torch.multinomial(preds.view(-1, preds.size(-1)), 1).view(preds.size()[:-1])
-        
-        # preds = torch.argmax(preds, dim=-1)    # Get predicted class indices
         
         # Apply mask if provided
         if mask is not None:

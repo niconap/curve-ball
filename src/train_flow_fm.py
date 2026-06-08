@@ -24,7 +24,7 @@ from metrics.abstract_metrics import TrainAbstractMetricsDiscrete, TrainAbstract
 from diffusion.extra_features import DummyExtraFeatures, ExtraFeatures
 from src.HGCN import HGCN
 from src.HGVAE import HGVAE
-from src.HypeFlow import ManifoldFMLitModule
+from src.HypeFlow_fm import ManifoldFMLitModule
 # from flow.gfm.gfm.models import FlowMapModule
 import pdb
 import numpy as np
@@ -310,6 +310,29 @@ def main(cfg: DictConfig):
         flow_checkpoint = torch.load(ckpt)    
         state_dict = flow_checkpoint["state_dict"]
         model.load_state_dict(state_dict, strict=False)
+        # model.load_from_checkpoint(ckpt, cfg=cfg, sampling_metrics=sampling_metrics, glob_cfg=glob_cfg)
+    
+    # import copy
+    # old_ckpt = ckpt
+    # new_ckpt = f"{old_ckpt}_fixed.ckpt"
+
+    # ckpt = torch.load(old_ckpt, map_location="cpu")
+    # fixed = copy.deepcopy(ckpt)          # 别动原文件
+
+    # n_missing, n_cast = 0, 0
+    # for opt_idx, opt_state in enumerate(fixed["optimizer_states"]):
+    #     for pid, state in opt_state["state"].items():
+    #         if "step" not in state:
+    #             state["step"] = torch.tensor(129880.)
+    #             n_missing += 1
+    #         elif not torch.is_tensor(state["step"]):
+    #             state["step"] = torch.tensor(state["step"])
+    #             n_cast += 1
+
+    # print(f"added {n_missing}, cast {n_cast} step fields")
+    # pdb.set_trace()
+    # torch.save(fixed, new_ckpt)
+        
 
     hydra.utils.log.info("Instantiating the Trainer")
     trainer = pl.Trainer(
@@ -325,6 +348,13 @@ def main(cfg: DictConfig):
 
     hydra.utils.log.info("Starting training!")
     
+    
+    # test sampling method
+    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # model = model.to(device)
+    # samples = model.sample(10)
+    # pdb.set_trace()
+
 
     if not cfg.test_only:    
         trainer.fit(model=model, datamodule=datamodule, ckpt_path=ckpt)

@@ -1,13 +1,13 @@
 #!/bin/bash
-#SBATCH --job-name=ego_small_hyp_flow
+#SBATCH --job-name=vt_ego_small_hyp_flow
 #SBATCH --partition=gpu_a100
 #SBATCH --gpus=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=9
 #SBATCH --time=24:00:00
 #SBATCH --array=0-4
-#SBATCH --output=outputs/ego_small_hyp_flow_%A_%a.out
-#SBATCH --error=outputs/ego_small_hyp_flow_%A_%a.err
+#SBATCH --output=outputs/vt_ego_small_hyp_flow_%A_%a.out
+#SBATCH --error=outputs/vt_ego_small_hyp_flow_%A_%a.err
 
 module purge
 module load 2024
@@ -48,7 +48,7 @@ VAE_CHECKPOINT="${EGO_SMALL_VAE_CHECKPOINTS[$IDX]}"
 
 if [[ "${VAE_CHECKPOINT}" == /path/to/* ]] || [ ! -f "${VAE_CHECKPOINT}" ]; then
   echo "Invalid VQ-VAE checkpoint for index=${IDX}: ${VAE_CHECKPOINT}"
-  echo "Please replace placeholder paths in jobs/ego_small_hyp_flow_array.job."
+  echo "Please replace placeholder paths in jobs/vt_ego_small_hyp_flow_array.job."
   exit 1
 fi
 
@@ -71,6 +71,8 @@ time python3 src/train_flow.py \
   model.hyp_channels=64 \
   model.latent_channels=64 \
   loss.codebook_size=32 \
+  general.samples_to_save=0 \
   flow_train.VAE_checkpoint="${VAE_CHECKPOINT}" \
   flow_train.Flow_checkpoint="${FLOW_CHECKPOINT}" \
-  flow_train.test_only="${TEST_ONLY}"
+  flow_train.test_only="${TEST_ONLY}" \
+  flow_train.integrate.method=vt_prediction

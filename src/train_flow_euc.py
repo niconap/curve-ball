@@ -24,9 +24,10 @@ from metrics.abstract_metrics import TrainAbstractMetricsDiscrete, TrainAbstract
 from diffusion.extra_features import DummyExtraFeatures, ExtraFeatures
 from src.HGCN import HGCN
 from src.HGVAE import HGVAE
-from src.HypeAR import ManifoldARLitModule
+from src.HypeFlowEuc import ManifoldFMLitModule
 import pdb
 import numpy as np
+
 
 warnings.filterwarnings("ignore", category=PossibleUserWarning)
 
@@ -68,7 +69,7 @@ def build_callbacks(cfg: DictConfig) -> List[Callback]:
             ModelCheckpoint(
                 monitor=cfg.train.monitor_metric,
                 mode=cfg.train.monitor_metric_mode,
-                save_top_k=cfg.train.model_checkpoints.save_top_k,
+                save_top_k=cfg.train.model_checkpoints.save_top_k * 2,
                 verbose=cfg.train.model_checkpoints.verbose,
                 save_last=cfg.train.model_checkpoints.save_last,
             )
@@ -78,7 +79,7 @@ def build_callbacks(cfg: DictConfig) -> List[Callback]:
             ModelCheckpoint(
                 monitor='val/log_metric',
                 mode='min',
-                save_top_k=cfg.train.model_checkpoints.save_top_k,
+                save_top_k=cfg.train.model_checkpoints.save_top_k * 2,
                 verbose=True,
                 save_last=cfg.train.model_checkpoints.save_last,
             )
@@ -88,11 +89,12 @@ def build_callbacks(cfg: DictConfig) -> List[Callback]:
             ModelCheckpoint(
                 monitor='val/log_metric_mean',
                 mode='min',
-                save_top_k=3,
+                save_top_k=5,
                 verbose=True,
                 save_last=cfg.train.model_checkpoints.save_last,
             )
         )
+
     if "every_n_epochs_checkpoint" in cfg.train:
         hydra.utils.log.info(
             f"Adding callback <ModelCheckpoint> for every {cfg.train.every_n_epochs_checkpoint.every_n_epochs} epochs"
@@ -170,8 +172,10 @@ def main(cfg: DictConfig):
             dataset_infos = qm9_dataset.QM9infos(datamodule=datamodule, cfg=glob_cfg)
             train_smiles = qm9_dataset.get_train_smiles(cfg=glob_cfg, train_dataloader=datamodule.train_dataloader(),
                                                         dataset_infos=dataset_infos, evaluate_dataset=False)
+            
             test_smiles = qm9_dataset.get_test_smiles(cfg=glob_cfg, test_dataloader=datamodule.test_dataloader(),
                                                         dataset_infos=dataset_infos, evaluate_dataset=False)
+        
         elif dataset_config['name'] == 'guacamol':
             from datasets import guacamol_dataset
             datamodule = guacamol_dataset.GuacamolDataModule(glob_cfg)
@@ -228,9 +232,6 @@ def main(cfg: DictConfig):
                 extra_features = DummyExtraFeatures()
             domain_features = DummyExtraFeatures()
 
-            # # dataset_infos.compute_input_output_dims(datamodule=datamodule, extra_features=extra_features,
-            #                                         domain_features=domain_features)
-
             model_kwargs = {'dataset_infos': dataset_infos, 'train_metrics': train_metrics,
                             'sampling_metrics': sampling_metrics, 'visualization_tools': visualization_tools,
                             'extra_features': extra_features, 'domain_features': domain_features}
@@ -242,7 +243,7 @@ def main(cfg: DictConfig):
     hydra_dir = Path.cwd()
     hydra.utils.log.info(f"Hydra Directory is {hydra_dir.resolve()}")
 
-    get_model = ManifoldARLitModule
+    get_model = ManifoldFMLitModule
     hydra.utils.log.info(f"Instantiating <{get_model}>")
     model = get_model(cfg, sampling_metrics, glob_cfg)
 
@@ -284,61 +285,33 @@ def main(cfg: DictConfig):
             VAE_model = HGCN(glob_cfg, **model_kwargs)
         elif glob_cfg.train.hyper_model == 'HGVAE':
             VAE_model = HGVAE(glob_cfg, **model_kwargs)
-        
+
         if cfg.VAE_checkpoint is not None:
-            VAE_checkpoint = torch.load(cfg.VAE_checkpoint)    
+            VAE_checkpoint = torch.load(cfg.VAE_checkpoint)
             state_dict = VAE_checkpoint["state_dict"]
             VAE_model.load_state_dict(state_dict, strict=False)
+            
         model.load_VAE(VAE_model)
-        # pdb.set_trace()
-        # Store the YaML config separately into the wandb dir
-        yaml_conf: str = OmegaConf.to_yaml(cfg=cfg)
-        (hydra_dir / "hparams.yaml").write_text(yaml_conf)
 
-  
-        
-    # ckpts = list(hydra_dir.glob("*.ckpt"))
-    # if len(ckpts) > 0:
-    #     ckpt_epochs = np.array(
-    #         [int(ckpt.parts[-1].split("-")[0].split("=")[1]) for ckpt in ckpts]
-    #     )
-    #     ckpt = str(ckpts[ckpt_epochs.argsort()[-1]])
-    #     hydra.utils.log.info(f"found checkpoint: {ckpt}")
-    # else:
-    #     ckpt = None
+
     ckpt = glob_cfg.flow_train.Flow_checkpoint
     if ckpt == "None":
         ckpt = None
     if cfg.test_only and ckpt is not None:
         flow_checkpoint = torch.load(ckpt)    
         state_dict = flow_checkpoint["state_dict"]
-        model.load_state_dict(state_dict)
-    
-    # model.load_from_checkpoint(ckpt, cfg=cfg, sampling_metrics=sampling_metrics, glob_cfg=glob_cfg)
-        
-    
-
+        model.load_state_dict(state_dict, strict=False)
     hydra.utils.log.info("Instantiating the Trainer")
     trainer = pl.Trainer(
-        # default_root_dir=hydra_dir,
         logger=wandb_logger,
         callbacks=callbacks,
         deterministic=cfg.train.deterministic,
         check_val_every_n_epoch=glob_cfg.general.check_val_every_n_epochs_flow,
-        # progress_bar_refresh_rate=cfg.logging.progress_bar_refresh_rate,
         **cfg.train.pl_trainer,
     )
 
 
     hydra.utils.log.info("Starting training!")
-    
-    
-    # test sampling method
-    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # model = model.to(device)
-    # samples = model.sample(10)
-    # pdb.set_trace()
-
 
     if not cfg.test_only:    
         trainer.fit(model=model, datamodule=datamodule, ckpt_path=ckpt)

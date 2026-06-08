@@ -307,12 +307,6 @@ def clustering_stats(graph_ref_list,
                     clustering_worker, [(G, bins) for G in graph_pred_list_remove_empty]):
                 sample_pred.append(clustering_hist)
 
-        # check non-zero elements in hist
-        # total = 0
-        # for i in range(len(sample_pred)):
-        #    nz = np.nonzero(sample_pred[i])[0].shape[0]
-        #    total += nz
-        # print(total)
     else:
         for i in range(len(graph_ref_list)):
             clustering_coeffs_list = list(nx.clustering(graph_ref_list[i]).values())
@@ -467,20 +461,6 @@ def orbit_stats_all(graph_ref_list, graph_pred_list, compute_emd=False):
 
     total_counts_ref = np.array(total_counts_ref)
     total_counts_pred = np.array(total_counts_pred)
-
-    # mmd_dist = compute_mmd(
-    #     total_counts_ref,
-    #     total_counts_pred,
-    #     kernel=gaussian,
-    #     is_hist=False,
-    #     sigma=30.0)
-
-    # mmd_dist = compute_mmd(
-    #         total_counts_ref,
-    #         total_counts_pred,
-    #         kernel=gaussian_tv,
-    #         is_hist=False,
-    #         sigma=30.0)  
 
     if compute_emd:
         # mmd_dist = compute_mmd(total_counts_ref, total_counts_pred, kernel=emd, sigma=30.0)
@@ -928,8 +908,6 @@ class TreeSamplingMetrics(SpectreSamplingMetrics):
         super().__init__(datamodule=datamodule,
                          compute_emd=False,
                          metrics_list=['degree', 'clustering', 'orbit', 'spectre', 'tree'])
-        #TODO: Verify the compute emd flag. It seens in this repo, it is always False
-        # https://github.com/AndreasBergmeister/graph-generation/blob/7e1b22b8f7752b4fad97f54f90be98ce380c3e26/graph_generation/metrics.py#L15
         
 class EgoSmallSamplingMetrics(SpectreSamplingMetrics):
     def __init__(self, datamodule):

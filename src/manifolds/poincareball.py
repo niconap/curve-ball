@@ -35,7 +35,6 @@ class PoincareBall(PoincareBallParent):
         return _lambda_x(x, self.c, keepdim=keepdim, dim=dim) ** 2 * (u * v).sum(
             dim=dim, keepdim=keepdim
         )
-
     def expmap_polar(self, x, u, r, dim: int = -1):
         sqrt_c = self.c ** 0.5
         u_norm = u.norm(dim=dim, p=2, keepdim=True).clamp_min(MIN_NORM)

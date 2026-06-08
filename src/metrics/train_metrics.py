@@ -8,7 +8,6 @@ from src.metrics.abstract_metrics import SumExceptBatchMetric, SumExceptBatchMSE
     ProbabilityMetric, NLL, MSELossMetric, AccuracyMetric, F1ScoreMetric
 from src.utils import has_analytic_kl
 from src.distribution.wrapped_normal import WrappedNormalPoincare
-from src.manifolds.lorentz import Lorentz
 import pdb
 from sklearn.metrics import f1_score
 import numpy as np
@@ -79,37 +78,32 @@ class HGCNTrainLoss(nn.Module):
         
         edge_existent_loss = self.edge_existent_loss(pos_scores, torch.ones_like(pos_scores))
         edge_existent_loss += self.edge_existent_loss(neg_scores, torch.zeros_like(neg_scores))
-        
-        # 去除掩码
-        # # 按最后一维检查是否有至少一个元素为 1
-        # row_mask = torch.any(data['node'] == 1, dim=-1, keepdim=True)  # 保留最后一维，形状为 (batch_size, num_rows, 1)
 
-        # # 广播 row_mask 到与 data['node'] 相同的形状
-        # True_pos = row_mask.expand_as(data['node'])  # 形状变为 (batch_size, num_rows, num_features)
+        node_loss = torch.zeros_like(edge_existent_loss)
+        edge_loss = torch.zeros_like(edge_existent_loss)
 
-        # data['node'] = data['node'][True_pos]
-        # pred['node'] = pred['node'][True_pos]
-        
-        # ## construct the true adjcency for the edge based on the true node values 
-        # row_mask = torch.any(data['edge'] == 1, dim=-1)  # (B, N, 1)
-        # row_mask = torch.any(row_mask, dim=-1, keepdim=True).unsqueeze(-1)  # (B, N, 1, 1)
-  
-        # True_mat = row_mask.expand_as(data['edge'])  # (B, N, N, D)
-        
-        # adj_masked = data['edge'][True_mat]  # 仅保留与有效节点相关的边
-        # pred_adj_masked = pred['edge'][True_mat]
-        
-        node_dim = pred['node'].size(-1)
-        edge_dim = pred['edge'].size(-1)
-        
-        node_loss = self.node_loss(pred['node'].reshape(-1, node_dim), data['node'].reshape(-1, node_dim))
-        edge_loss = self.edge_loss(pred['edge'].reshape(-1, edge_dim), data['edge'].reshape(-1, edge_dim))
+        if self.lambda_node > 0:
+            node_dim = pred['node'].size(-1)
+            node_loss = self.node_loss(
+                pred['node'].reshape(-1, node_dim),
+                data['node'].reshape(-1, node_dim)
+            )
 
-        loss = edge_existent_loss + self.lambda_node * node_loss + self.lambda_edge * edge_loss
-        # node_loss = 0
-        # edge_loss = 0
-        # loss = edge_existent_loss + self.lambda_node * node_loss + self.lambda_edge * edge_loss
-        
+        if self.lambda_edge > 0:
+            edge_dim = pred['edge'].size(-1)
+            edge_loss = self.edge_loss(
+                pred['edge'].reshape(-1, edge_dim),
+                data['edge'].reshape(-1, edge_dim)
+            )
+
+        loss = edge_existent_loss
+
+        if self.lambda_node > 0:
+            loss = loss + self.lambda_node * node_loss
+
+        if self.lambda_edge > 0:
+            loss = loss + self.lambda_edge * edge_loss
+
         if log:
             to_log = {'train_loss/batch_CE': loss.detach(),
                       'train_loss/edge_existent_CE': self.edge_existent_loss.compute(),
@@ -138,10 +132,9 @@ class HGCNTrainLoss(nn.Module):
         return to_log
 
 def band_norm_loss(z, r_min=0.2, r_max=0.8, lam=1.0, eps=1e-9, mask=None):
-    norm = torch.norm(z, dim=-1)  # batch 维
+    norm = torch.norm(z, dim=-1) 
     loss_hi = torch.clamp(norm - r_max, min=0.0) ** 2
     loss_lo = torch.clamp(r_min - norm, min=0.0) ** 2
-    # 取均值或求和均可
     return lam * ((loss_hi + loss_lo) * mask).sum() / mask.sum()
 
 class HGVAETrainLoss(nn.Module):
@@ -195,32 +188,24 @@ class HGVAETrainLoss(nn.Module):
 
                 
     def forward(self, data, pred, euc_dist, hyp_dist, zs_euc, zs_hyp, mask, dataset_weight, log: bool, use_kl_loss: bool = True, reconstruct_metrics=None):
-        # edge_existent_loss = self.edge_existent_loss(pred['adj'], data['adj'])
-        # 过滤掉节点个数为 0 的类别
-        # pdb.set_trace()
         self.reconstruct_metrics = reconstruct_metrics
         non_zero_mask = dataset_weight.node_types > 0
         filtered_node_types = dataset_weight.node_types[non_zero_mask]
-        # 计算权重
         weights = 1.0 / (filtered_node_types)
         weights = weights / weights.sum() * non_zero_mask.sum()  # 归一化
-        # 恢复完整的权重向量
         full_weights = torch.zeros_like(dataset_weight.node_types, dtype=torch.float32)
         full_weights[non_zero_mask] = weights
         
         non_zero_mask_edge = dataset_weight.edge_types > 0
         filtered_edge_types = dataset_weight.edge_types[non_zero_mask_edge]
-        # 计算权重
         weights_edge = 1.0 / (filtered_edge_types)
-        weights_edge = weights_edge / weights_edge.sum() * non_zero_mask_edge.sum()  # 归一化
-        # 恢复完整的权重向量
+        weights_edge = weights_edge / weights_edge.sum() * non_zero_mask_edge.sum()  
         full_weights_edge = torch.zeros_like(dataset_weight.edge_types, dtype=torch.float32)
         full_weights_edge[non_zero_mask_edge] = weights_edge 
         
         edge_mask = torch.einsum('bn, bm -> bnm', mask, mask)
         diag_indices = torch.arange(edge_mask.shape[-1], device=data['adj'].device)
         edge_mask[:, diag_indices, diag_indices] = 0
-        # import pdb; pdb.set_trace()
         
         euc2node_loss = 0.0
         hyp2node_loss = 0.0
@@ -228,7 +213,6 @@ class HGVAETrainLoss(nn.Module):
         hyp2edge_loss = 0.0
         consistency_node_loss = 0.0
         consistency_edge_loss = 0.0
-        # import pdb; pdb.set_trace()
         if self.euc_channels > 0:
             euc2node_loss = self.euc2node_loss(pred['euc2node'], data['node'], mask, weight=full_weights.to(torch.float32))
             euc2edge_loss = self.euc2edge_loss(pred['euc2edge'], data['edge'], edge_mask, weight=full_weights_edge.to(torch.float32))
@@ -241,15 +225,8 @@ class HGVAETrainLoss(nn.Module):
             consistency_node_loss = self.consistency_node_loss(pred['euc2node'], pred['hyp2node'], mask)
             consistency_edge_loss = self.consistency_edge_loss(pred['euc2edge'], pred['hyp2edge'], edge_mask)
         
-        # node_loss = self.node_loss(pred['node'], data['node'], mask)
-        # edge_loss = self.edge_loss(pred['edge'], data['edge'], edge_mask)
-        # node_loss = self.node_loss(pred['node'], data['node'], mask, weight=full_weights)
-        # edge_loss = self.edge_loss(pred['edge'], data['edge'], edge_mask, weight=full_weights_edge)
-
-        # pdb.set_trace()
         use_vq = self.cfg.loss.lambda_commitment_weight != 0
         if use_vq:
-            # if self.stage == 'train':
             if self.euc_channels > 0 and self.hyp_channels > 0:
                 self.l2_loss = (torch.norm(zs_euc['euc_feat'], p=2, dim=-1) * mask).sum() / mask.sum() + (torch.norm(zs_hyp['hyp_feat'], p=2, dim=-1) * mask).sum() / mask.sum()
             elif self.euc_channels > 0:
@@ -269,11 +246,6 @@ class HGVAETrainLoss(nn.Module):
                 loss += zs_euc['euc_vq_loss']['loss'].mean()
             elif self.hyp_channels > 0:
                 loss += zs_hyp['hyp_vq_loss']['loss'].mean()
-            # else:     
-            #     loss = self.lambda_euc2node * euc2node_loss + self.lambda_hyp2node * hyp2node_loss \
-            #         + self.lambda_euc2edge * euc2edge_loss + self.lambda_hyp2edge * hyp2edge_loss \
-            #         + self.lambda_l2 * self.l2_loss + self.lambda_consistency_node * consistency_node_loss \
-            #         + self.lambda_consistency_edge * consistency_edge_loss   
         else:
             if use_kl_loss:
                 self.l2_loss = 0.0
@@ -334,7 +306,6 @@ class HGVAETrainLoss(nn.Module):
             self.node_acc.update(node_logits, data['node'], mask)
             self.node_f1.update(node_logits, data['node'], mask)
 
-            # 边预测融合
             edge_logits = 0.0
             if self.euc_channels == 0:
                 edge_logits += pred['hyp2edge']
@@ -346,12 +317,6 @@ class HGVAETrainLoss(nn.Module):
             self.edge_acc.update(edge_logits, data['edge'], edge_mask)
             self.edge_f1.update(edge_logits, data['edge'], edge_mask)
 
-        # with torch.no_grad():
-        #     self.node_acc.update(pred['euc2node']*self.lambda_euc2node+pred['hyp2node']*self.lambda_hyp2node, data['node'], mask)
-        #     self.node_f1.update(pred['euc2node']*self.lambda_euc2node+pred['hyp2node']*self.lambda_hyp2node, data['node'], mask)
-        #     self.edge_acc.update(pred['euc2edge']*self.lambda_euc2edge+pred['hyp2edge']*self.lambda_hyp2edge, data['edge'], edge_mask)
-        #     self.edge_f1.update(pred['euc2edge']*self.lambda_euc2edge+pred['hyp2edge']*self.lambda_hyp2edge, data['edge'], edge_mask)
-        
         euc2node_CE = 0.0
         euc2edge_CE = 0.0
         hyp2node_CE = 0.0
@@ -394,9 +359,7 @@ class HGVAETrainLoss(nn.Module):
                 to_log[f'{self.stage}/vq_loss_total'] = zs_hyp['hyp_vq_loss']['loss'].mean().item()
                 to_log[f'{self.stage}/vq_loss'] = zs_hyp['hyp_vq_loss']['vq_loss'].mean().item() if isinstance(zs_hyp['hyp_vq_loss']['vq_loss'], torch.Tensor) else zs_hyp['hyp_vq_loss']['vq_loss']
                 to_log[f'{self.stage}/commit_loss'] = zs_hyp['hyp_vq_loss']['commit_loss'].mean().item()
-            # if wandb.run:
-            #     wandb.log(to_log, commit=True)
-    
+
         return loss, to_log
     
     def reset(self):
@@ -460,8 +423,6 @@ class HGVAETrainLoss(nn.Module):
         }
         
         print("Logging to WandB:", to_log)
-        # if wandb.run:
-        #     wandb.log(to_log, on_step=False, on_epoch=True,)
         return to_log
         
         

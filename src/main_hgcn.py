@@ -120,7 +120,6 @@ def main(cfg: DictConfig):
         else:
             train_metrics = TrainMolecularMetrics(dataset_infos)
 
-        # We do not evaluate novelty during training
         sampling_metrics = SamplingMolecularMetrics(
             dataset_infos, train_smiles)
         visualization_tools = MolecularVisualization(
@@ -134,21 +133,15 @@ def main(cfg: DictConfig):
 
     utils.create_folders(cfg)
 
-    # X, E, y = dataset_infos.get_example()
-    # HGCN input adjacent matrix(ABSTRACT DATASET). BUT MOLECULES CONTAIN EDGE FEATURE.
     if not cfg.model.use_poincare:
         cfg.model.lgcn_in_channels = dataset_infos.input_dims['X'] + 1
         cfg.model.lgcn_in_edge_channels = dataset_infos.input_dims['E'] + 1
-        # lgcn out channels == hyperformer in_channels
         cfg.model.lgcn_out_channels = cfg.model.latent_channels
     else:
-        # pdb.set_trace()
         cfg.model.lgcn_in_channels = dataset_infos.input_dims['X'] + \
             dataset_infos.input_dims['y']
         cfg.model.lgcn_in_edge_channels = dataset_infos.input_dims['E']
-        # lgcn out channels == hyperformer in_channels
         cfg.model.lgcn_out_channels = cfg.model.latent_channels
-    # only for edge attributes
     cfg.model.edge_classes = dataset_infos.output_dims['E']
     cfg.model.node_classes = dataset_infos.output_dims['X']
 
@@ -160,11 +153,11 @@ def main(cfg: DictConfig):
     callbacks = []
     if cfg.train.save_model:
         checkpoint_callback = ModelCheckpoint(dirpath=f"checkpoints/{cfg.general.name}",
-                                              filename='{epoch}-{batch_loss:.2f}',
-                                              monitor='val_epoch/log_metric',
-                                              save_top_k=5,
-                                              mode='max',
-                                              every_n_epochs=5)
+                                      filename='{epoch}-{val_loss:.2f}',
+                                      monitor='val/loss',
+                                      save_top_k=5,
+                                      mode='min',
+                                      every_n_epochs=5)
         last_ckpt_save = ModelCheckpoint(
             dirpath=f"checkpoints/{cfg.general.name}", filename='last', every_n_epochs=1)
         callbacks.append(last_ckpt_save)
@@ -180,9 +173,8 @@ def main(cfg: DictConfig):
 
     use_gpu = cfg.general.gpus > 0 and torch.cuda.is_available()
     wandb_logger = setup_wandb_logger(cfg)
-    hyper_trainer = Trainer(  # gradient_clip_val=cfg.train.clip_grad,
-        # strategy="ddp_find_unused_parameters_true",  # Needed to load old checkpoints
-        strategy="auto",  # Needed to load old checkpoints
+    hyper_trainer = Trainer(  
+        strategy="auto",  
         accelerator='gpu' if use_gpu else 'cpu',
         devices=cfg.general.gpus if use_gpu else 1,
         max_epochs=cfg.train.n_epochs,
@@ -192,51 +184,16 @@ def main(cfg: DictConfig):
         callbacks=callbacks,
         log_every_n_steps=50 if name != 'debug' else 1,
         logger=wandb_logger)
-    # tuner = Tuner(hyper_trainer) # Uncomment to find optimal batch size
-    # tuner.scale_batch_size(hyper_model, datamodule=datamodule, mode='power')
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     hyper_model = hyper_model.to(device)
 
-    # samples = hyper_model.sample_batch(20)
 
     if not cfg.general.test_only:
         hyper_trainer.fit(hyper_model, datamodule=datamodule,
                           ckpt_path=cfg.general.resume)
         if cfg.general.name not in ['debug', 'test']:
             hyper_trainer.test(hyper_model, datamodule=datamodule)
-
-    # trainer = Trainer(gradient_clip_val=cfg.train.clip_grad,
-    #                   strategy="ddp_find_unused_parameters_true",  # Needed to load old checkpoints
-    #                   accelerator='gpu' if use_gpu else 'cpu',
-    #                   devices=cfg.general.gpus if use_gpu else 1,
-    #                   max_epochs=cfg.train.n_epochs,
-    #                   check_val_every_n_epoch=cfg.general.check_val_every_n_epochs,
-    #                   fast_dev_run=cfg.general.name == 'debug',
-    #                   enable_progress_bar=False,
-    #                   callbacks=callbacks,
-    #                   log_every_n_steps=50 if name != 'debug' else 1,
-    #                   logger = [])
-
-    # if not cfg.general.test_only:
-    #     trainer.fit(model, datamodule=datamodule, ckpt_path=cfg.general.resume)
-    #     if cfg.general.name not in ['debug', 'test']:
-    #         trainer.test(model, datamodule=datamodule)
-    # else:
-    #     # Start by evaluating test_only_path
-    #     trainer.test(model, datamodule=datamodule, ckpt_path=cfg.general.test_only)
-    #     if cfg.general.evaluate_all_checkpoints:
-    #         directory = pathlib.Path(cfg.general.test_only).parents[0]
-    #         print("Directory:", directory)
-    #         files_list = os.listdir(directory)
-    #         for file in files_list:
-    #             if '.ckpt' in file:
-    #                 ckpt_path = os.path.join(directory, file)
-    #                 if ckpt_path == cfg.general.test_only:
-    #                     continue
-    #                 print("Loading checkpoint", ckpt_path)
-    #                 trainer.test(model, datamodule=datamodule, ckpt_path=ckpt_path)
-
 
 if __name__ == '__main__':
     main()

@@ -1,13 +1,13 @@
 #!/bin/bash
-#SBATCH --job-name=ego_small_hyp_flow
+#SBATCH --job-name=euc_ego_small_flow
 #SBATCH --partition=gpu_a100
 #SBATCH --gpus=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=9
-#SBATCH --time=24:00:00
+#SBATCH --time=15:00:00
 #SBATCH --array=0-4
-#SBATCH --output=outputs/ego_small_hyp_flow_%A_%a.out
-#SBATCH --error=outputs/ego_small_hyp_flow_%A_%a.err
+#SBATCH --output=outputs/ego_small_euc_flow_%A_%a.out
+#SBATCH --error=outputs/ego_small_euc_flow_%A_%a.err
 
 module purge
 module load 2024
@@ -57,15 +57,11 @@ echo "VQ-VAE checkpoint: ${VAE_CHECKPOINT}"
 echo "Flow checkpoint: ${FLOW_CHECKPOINT}"
 echo "Test only: ${TEST_ONLY}"
 
-time python3 src/train_flow.py \
-  +experiment=ego_small_hyp \
+time python3 src/train_flow_euc.py \
+  +experiment=ego_small_hyp_euc \
   dataset=ego_small \
   loss=VQVAE \
   model.c="${CURVATURE}" \
-  model.k_in="${CURVATURE}" \
-  model.k_hidden="${CURVATURE}" \
-  model.k_out="${CURVATURE}" \
-  model.k_poin_out="$(awk "BEGIN {print 1/${CURVATURE}}")" \
   general.wandb="${WANDB_LOG_MODE}" \
   dataset.debug=false \
   model.hyp_channels=64 \

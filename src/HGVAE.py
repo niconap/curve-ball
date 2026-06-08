@@ -17,8 +17,7 @@ from src.models.hyper_vae import HypFormer as HypVAE
 from torch_geometric.nn import GCNConv
 from metrics.train_metrics import HGVAETrainLoss
 import utils
-from src.distribution.wrapped_normal import WrappedNormalLorentz, WrappedNormalPoincare, WrappedNormal
-from src.manifolds.lorentz import Lorentz
+from src.distribution.wrapped_normal import WrappedNormalPoincare, WrappedNormal
 # from src.manifolds.poincareball import PoincareBall
 from src.models.hyperbolic_nn_plusplus.geoopt_plusplus.manifolds import PoincareBall
 import math
@@ -97,11 +96,6 @@ class HGVAE(pl.LightningModule):
         if self.use_VQVAE:
             euc_feat, hyp_feat, z = self.model.encode(x, adj, E, node_mask)
 
-            # pdb.set_trace()
-            # (Pdb) euc_feat.shape
-            # torch.Size([32, 13, 128])
-            # (Pdb) hyp_feat.shape
-            # torch.Size([32, 13, 4])
             if self.euc_channels > 0:
                 euc_quantize, euc_vq_ind, euc_vq_loss, euc_perplexity = self.model.codebook(
                     euc_feat, codebook_type="euc", node_mask=node_mask)
@@ -173,7 +167,6 @@ class HGVAE(pl.LightningModule):
                 euc_feat_mean, euc_feat_logvar, hyp_feat_mean, hyp_feat_logvar, z = self.model.encode(
                     x, adj, E, node_mask)
 
-                # 让被mask的位置的值等于0
                 if node_mask is not None:
                     mask_expanded = node_mask.unsqueeze(-1)
                     if self.euc_channels > 0:
@@ -194,13 +187,8 @@ class HGVAE(pl.LightningModule):
                 hyp_sample_z = None
                 if self.hyp_channels > 0:
                     if not self.cfg.model.use_poincare:
-                        if hyp_feat_mean is not None:
-                            hyp_qz_x = WrappedNormalLorentz(hyp_feat_mean[..., 1:], torch.exp(
-                                0.5 * hyp_feat_logvar[..., 1:]), self.model.manifold_out)
-                            hyp_sample_z = hyp_qz_x.rsample()
-                        else:
-                            hyp_qz_x = None
-                            hyp_sample_z = None
+                        hyp_qz_x = None
+                        hyp_sample_z = None
 
                         hyp_pz = torch.distributions.Normal(
                             torch.zeros_like(hyp_feat_mean[..., 1:]),
@@ -249,38 +237,15 @@ class HGVAE(pl.LightningModule):
         X, E, y = sample.X, sample.E, sample.y
         diag_mask = torch.eye(
             E.shape[1], dtype=torch.bool, device=E.device).unsqueeze(0)
-        E[diag_mask.expand(E.shape[0], -1, -1)] = 0  # 扩展到 batch 维度并设置对角线为 0
-
-        # n_nodes = node_mask.sum(-1)
-        # batch_size = X.shape[0]
-        # molecule_list = []
-        # for i in range(batch_size):
-        #     n = n_nodes[i]
-        #     atom_types = X[i, :n].cpu()
-        #     edge_types = E[i, :n, :n].cpu()
-        #     molecule_list.append([atom_types, edge_types])
-
-        # # Only once after full pass
-        # current_path = os.getcwd()
-        # result_path = os.path.join(
-        #     current_path,
-        #     f'graphs/{self.name}/reconstruct_epoch_{self.current_epoch}/'
-        # )
-        # self.visualization_tools.visualize(result_path, molecule_list, batch_size, "reconstruct_graph")
-        # self.print("Visualization complete.")
-
+        E[diag_mask.expand(E.shape[0], -1, -1)] = 0  
         return X, E, node_mask.sum(-1)
 
     def interpolate(self, z1, z2, time_steps: int):
         z1 = z1.to(self.device)
         z2 = z2.to(self.device)
-        # z1 = z1.unsqueeze(0)
-        # z2 = z2.unsqueeze(0)
-        # z1的形状[dim, ]
         two_pts = torch.stack((z1, z2), dim=1)  # [1, 2, d]
         z = torch.zeros(time_steps+1, z1.size(0), z1.size(1)).to(self.device)
         for i in range(time_steps):
-            # 这里需要使用双曲差值
             weight = torch.tensor([1 - i / time_steps, i / time_steps]).unsqueeze(
                 0).expand(two_pts.size(0), 2).to(self.device)  # [1, 2]
             mid_point = self.product_manifold.weighted_midpoint(
@@ -295,12 +260,10 @@ class HGVAE(pl.LightningModule):
 
     @torch.no_grad()
     def test_interpolate(self, batch, steps: int = 10, batch_index: int = 0):
-        # 设置随机种子以确保可重复性
         torch.manual_seed(34)
         torch.cuda.manual_seed(34)
         np.random.seed(34)
 
-        # 随机选择两个点
         batch = batch.to(self.device)
         dense_data, node_mask = utils.to_dense(
             batch.x, batch.edge_index, batch.edge_attr, batch.batch)
@@ -318,22 +281,10 @@ class HGVAE(pl.LightningModule):
         node_feat, edge_feat, z = self.model.encode(x, adj, E, node_mask)
         # pdb.set_trace()
         n_nodes = node_mask.sum(-1)
-        #  随机选择两个点，他们的n_nodes必须一样
-        # random_start是在x.size(1)中随机选择一个index
-        # random_end是在x.size(1)中随机选择一个index
-        # 但是random_end不能和random_start一样，也不能和random_start的n_nodes不一样
-
-        # 多做几个random start
         random_start_list = []
         for i in range(10):
-            # 如何取消随机性在这里
-
-            # pdb.set_trace()
             random_start = torch.randint(0, edge_feat.size(0), (1,))
             random_end = torch.randint(0, edge_feat.size(0), (1,))
-            # random_start = torch.tensor(429)
-            # random_end = torch.tensor(445)
-            # pdb.set_trace
             while random_start == random_end or n_nodes[random_start] != n_nodes[random_end]:
                 random_end = torch.randint(0, edge_feat.size(1), (1,))
                 random_start = torch.randint(0, edge_feat.size(1), (1,))
@@ -345,7 +296,6 @@ class HGVAE(pl.LightningModule):
             n_nodes_random = n_nodes[random_start]
             node_mask_random = node_mask[random_start, ...].expand(steps+1, -1)
 
-            # 使用模型进行解码
             euc2node_feat, hyp2node_feat, euc2edge_feat, hyp2edge_feat, reconstruct_adj = self.model.decode(
                 z, adj, node_mask_random)
             reconstruct_x = torch.zeros_like(
@@ -396,33 +346,6 @@ class HGVAE(pl.LightningModule):
                 '/home/crwang/code/graph-generation/HypeFlow/data/interpolate/',
                 f'graphs/{self.name}/strips_ckpt2/interpolate_train_batch_index_{batch_index}_random_{random_start.item()}_{random_end.item()}_argmax/'
             )
-            self.visualization_tools.visualize_interpolation_strip2(
-                molecule_list, result_path, log_tag="interpolate_qm9")
-            # pdb.set_trace()
-
-            # # Only once after full pass
-            # current_path = os.getcwd()
-            # result_path = os.path.join(
-            #     '/home/crwang/code/graph-generation/HypeFlow/data/interpolate/',
-            #     f'graphs/{self.name}/interpolate_random_{random_start.item()}_{random_end.item()}_argmax/'
-            # )
-            # self.visualization_tools.visualize(result_path, molecule_list, steps+1, "interpolate_qm9")
-            # self.print("Visualization complete.")
-
-            # molecule_list_soft = []
-            # for i in range(steps+1):
-            #     n = n_nodes_random
-            #     atom_types = X_soft[i, :n].cpu()
-            #     edge_types = E_soft[i, :n, :n].cpu()
-            #     molecule_list_soft.append([atom_types, edge_types])
-
-            # result_path_soft = os.path.join(
-            #     '/home/crwang/code/graph-generation/HypeFlow/data/interpolate/',
-            #     f'graphs/{self.name}/interpolate_random_{random_start.item()}_{random_end.item()}_soft/'
-            # )
-            # self.visualization_tools.visualize(result_path_soft, molecule_list_soft, steps+1, "interpolate_qm9")
-            # self.print("Visualization complete.")
-
         return X, E, node_mask.sum(-1)
 
     def training_step(self, batch, batch_idx):
@@ -441,15 +364,12 @@ class HGVAE(pl.LightningModule):
         adj, edge_labels = utils.process_edge_attr(E, node_mask)
         node_labels = x
 
-        # 检查输入数据是否有NaN
         if torch.isnan(x).any() or torch.isnan(E).any():
             print("警告: 输入数据中存在NaN值")
             print(f"x中NaN的数量: {torch.isnan(x).sum().item()}")
             print(f"E中NaN的数量: {torch.isnan(E).sum().item()}")
-            # 保存当前模型状态
             torch.save(self.state_dict(),
                        f'nan_detected_epoch_{self.current_epoch}.pt')
-            # 停止训练
             self.trainer.should_stop = True
             return {'loss': torch.tensor(0.0, device=self.device)}
 
@@ -647,20 +567,9 @@ class HGVAE(pl.LightningModule):
                 hyp_sample_z = None
                 if self.hyp_channels > 0:
                     if not self.cfg.model.use_poincare:
-                        if hyp_feat_mean is not None:
-                            hyp_pz = WrappedNormalLorentz(
-                                torch.zeros_like(hyp_feat_mean[..., 1:]),
-                                torch.ones_like(hyp_feat_logvar[..., 1:]).mul(
-                                    self.cfg.model.prior_std),
-                                self.model.manifold_out
-                            )
-                            hyp_qz_x = WrappedNormalLorentz(hyp_feat_mean[..., 1:], torch.exp(
-                                0.5 * hyp_feat_logvar[..., 1:]), self.model.manifold_out)
-                            hyp_sample_z = hyp_qz_x.rsample()
-                        else:
-                            hyp_pz = None
-                            hyp_qz_x = None
-                            hyp_sample_z = None
+                        hyp_pz = None
+                        hyp_qz_x = None
+                        hyp_sample_z = None
                         # import pdb; pdb.set_trace()
 
                         hyp_pz = torch.distributions.Normal(
@@ -764,7 +673,6 @@ class HGVAE(pl.LightningModule):
                 if hyp2edge_feat is not None:
                     reconstruct_E += hyp2edge_feat
 
-                # 检查重建结果是否有NaN
                 if torch.isnan(reconstruct_x).any() or torch.isnan(reconstruct_E).any():
                     print("警告: 重建结果中存在NaN值")
                     print(
@@ -783,20 +691,8 @@ class HGVAE(pl.LightningModule):
             opt_euc.zero_grad()
             opt_hyp.zero_grad()
 
-            # 反向传播
             self.manual_backward(loss)
-            # pdb.set_trace()
-            # from geoopt import ManifoldParameter
-            # assert isinstance(self.model.hyp_codebook.codebook, ManifoldParameter)
-            # >>> 这里插入监控梯度的部分 <<<
-            # for name, param in self.model.named_parameters():
-            #     if param.requires_grad and isinstance(param, ManifoldParameter):
-            #         if param.grad is not None:
-            #             grad_norm = param.grad.norm()
-            #             if "hyp_codebook" in name:
-            #                 self.log(f'grad/{name}_norm', grad_norm, on_step=False, on_epoch=True, prog_bar=True)
-            # clip
-            # 分别优化
+
             self.clip_gradients(
                 optimizer=opt_euc,
                 gradient_clip_val=self.cfg.train.clip_grad,
@@ -837,28 +733,6 @@ class HGVAE(pl.LightningModule):
         x = torch.cat((x, extra_data.X, y_repeated), dim=2).float()
         E = torch.cat((edge_labels, extra_data.E), dim=3).float()
 
-        # import pdb; pdb.set_trace()
-        # hyp_pz = WrappedNormalPoincare(
-        #     torch.zeros(4,self.cfg.model.hyp_channels),
-        #     torch.ones(4,self.cfg.model.hyp_channels).mul(self.cfg.model.prior_std),
-        #     PoincareBall(dim=self.cfg.model.hyp_channels, c = 1/float(self.cfg.model.k_poin_out))
-        # )
-        # hyp_sample_z = hyp_pz.rsample()
-
-        # hyp_pz2 = WrappedNormal(
-        #     torch.zeros(4,self.cfg.model.hyp_channels),
-        #     torch.ones(4,self.cfg.model.hyp_channels).mul(self.cfg.model.prior_std),
-        #     PoincareBall(dim= self.cfg.model.hyp_channels,c = 1/float(self.cfg.model.k_poin_out))
-        # )
-        # hyp_sample_z2 = hyp_pz2.rsample()
-
-        # hyp_pz2 = WrappedNormal(
-        #     torch.zeros_like(self.cfg.model.hyp_channels),
-        #     torch.ones_like(self.cfg.model.hyp_channels).mul(self.cfg.model.prior_std),
-        #     PoincareBall(dim= self.cfg.model.hyp_channels,c = 1/float(self.cfg.model.k_poin_out))
-        # )
-
-        # VQ-VAE 无条件生成的核心修改点
         if self.use_VQVAE:
             euc_feat, hyp_feat, z = self.model.encode(x, adj, E, node_mask)
 
@@ -953,10 +827,6 @@ class HGVAE(pl.LightningModule):
                     reconstruct_x = euc2node_feat
                     reconstruct_E = euc2edge_feat
                 else:
-                    # reconstruct_x = euc2node_feat * self.cfg.loss.lambda_euc2node + \
-                    #     hyp2node_feat * self.cfg.loss.lambda_hyp2node
-                    # reconstruct_E = euc2edge_feat * self.cfg.loss.lambda_euc2edge + \
-                    #     hyp2edge_feat * self.cfg.loss.lambda_hyp2edge
                     reconstruct_x = euc2node_feat + hyp2node_feat 
                     reconstruct_E = euc2edge_feat + hyp2edge_feat
                 self.train_metrics(masked_pred_X=reconstruct_x, masked_pred_E=reconstruct_E, true_X=node_labels, true_E=edge_labels,
@@ -967,14 +837,8 @@ class HGVAE(pl.LightningModule):
                 euc_feat_mean, euc_feat_logvar, hyp_feat_mean, hyp_feat_logvar, z = self.model.encode(
                     x, adj, E, node_mask)
 
-                # 检查编码器输出是否有NaN
                 if self.euc_channels > 0:
                     if torch.isnan(euc_feat_mean).any() or torch.isnan(euc_feat_logvar).any():
-                        print("警告: 编码器输出中存在NaN值")
-                        print(
-                            f"euc_feat_mean中NaN的数量: {torch.isnan(euc_feat_mean).sum().item()}")
-                        print(
-                            f"euc_feat_logvar中NaN的数量: {torch.isnan(euc_feat_logvar).sum().item()}")
                         self.trainer.should_stop = True
                         return {'loss': torch.tensor(0.0, device=self.device)}
 
@@ -989,7 +853,6 @@ class HGVAE(pl.LightningModule):
                         self.trainer.should_stop = True
                         return {'loss': torch.tensor(0.0, device=self.device)}
 
-                # 让被mask的位置的值等于0
                 if node_mask is not None:
                     mask_expanded = node_mask.unsqueeze(-1)
                     if self.euc_channels > 0:
@@ -1008,14 +871,6 @@ class HGVAE(pl.LightningModule):
                         torch.ones_like(euc_feat_logvar)
                     )
 
-                # # 在创建正态分布前添加数值检查
-                # if torch.isnan(euc_feat_mean).any() or torch.isnan(euc_feat_logvar).any():
-                #     raise ValueError("Encoder outputs contain NaN values")
-
-                # # 添加数值稳定处理（原有代码修改）
-                # std = torch.exp(0.5 * euc_feat_logvar.clamp(min=-20, max=20))  # 限制logvar范围
-                # std = std + 1e-8  # 防止零标准差
-
                     euc_qz_x = torch.distributions.Normal(
                         euc_feat_mean, torch.exp(0.5 * euc_feat_logvar))
                     euc_sample_z = euc_qz_x.rsample()
@@ -1025,20 +880,9 @@ class HGVAE(pl.LightningModule):
                 hyp_sample_z = None
                 if self.hyp_channels > 0:
                     if not self.cfg.model.use_poincare:
-                        if hyp_feat_mean is not None:
-                            hyp_pz = WrappedNormalLorentz(
-                                torch.zeros_like(hyp_feat_mean[..., 1:]),
-                                torch.ones_like(hyp_feat_logvar[..., 1:]).mul(
-                                    self.cfg.model.prior_std),
-                                self.model.manifold_out
-                            )
-                            hyp_qz_x = WrappedNormalLorentz(hyp_feat_mean[..., 1:], torch.exp(
-                                0.5 * hyp_feat_logvar[..., 1:]), self.model.manifold_out)
-                            hyp_sample_z = hyp_qz_x.rsample()
-                        else:
-                            hyp_pz = None
-                            hyp_qz_x = None
-                            hyp_sample_z = None
+                        hyp_pz = None
+                        hyp_qz_x = None
+                        hyp_sample_z = None
                         # import pdb; pdb.set_trace()
 
                         hyp_pz = torch.distributions.Normal(
@@ -1051,11 +895,6 @@ class HGVAE(pl.LightningModule):
 
                     else:
                         if hyp_feat_mean is not None:
-                            # hyp_pz = WrappedNormalPoincare(
-                            #     torch.zeros_like(hyp_feat_mean),
-                            #     torch.ones_like(hyp_feat_logvar).mul(self.cfg.model.prior_std),
-                            #     self.model.manifold
-                            # )
                             hyp_pz = WrappedNormalPoincare(
                                 torch.zeros_like(hyp_feat_mean),
                                 torch.ones_like(hyp_feat_logvar).mul(self.cfg.model.prior_std).mul(
@@ -1079,22 +918,10 @@ class HGVAE(pl.LightningModule):
                 elif hyp_sample_z is not None:
                     graph_feat = hyp_sample_z
                 else:
-                    graph_feat = None  # 或者你可以根据需要设定一个默认值
+                    graph_feat = None  
 
                 euc2node_feat, hyp2node_feat, euc2edge_feat, hyp2edge_feat, reconstruct_adj = self.model.decode(
                     graph_feat, adj, node_mask)
-
-                # # 检查解码器输出是否有NaN
-                # if torch.isnan(euc2node_feat).any() or torch.isnan(euc2edge_feat).any():
-                #     print("警告: 解码器输出中存在NaN值")
-                #     print(f"euc2node_feat中NaN的数量: {torch.isnan(euc2node_feat).sum().item()}")
-                #     print(f"euc2edge_feat中NaN的数量: {torch.isnan(euc2edge_feat).sum().item()}")
-                #     if hyp2node_feat is not None:
-                #         print(f"hyp2node_feat中NaN的数量: {torch.isnan(hyp2node_feat).sum().item()}")
-                #         print(f"hyp2edge_feat中NaN的数量: {torch.isnan(hyp2edge_feat).sum().item()}")
-                #     torch.save(self.state_dict(), f'nan_detected_epoch_{self.current_epoch}.pt')
-                #     self.trainer.should_stop = True
-                #     return {'loss': torch.tensor(0.0, device=self.device)}
 
                 data = {'node': node_labels, 'edge': edge_labels, 'adj': adj}
                 pred = {'euc2node': euc2node_feat, 'hyp2node': hyp2node_feat,
@@ -1111,7 +938,6 @@ class HGVAE(pl.LightningModule):
                 loss, to_log = self.val_loss.forward(data, pred, euc_distribution, hyp_distribution, euc_feature, hyp_feature, node_mask,
                                                      dataset_weight=self.dataset_infos, log=True, use_kl_loss=True,  reconstruct_metrics=self.reconstruct_metrics)
                 self.log_dict(to_log)
-                # 检查损失是否有NaN
                 if torch.isnan(loss):
                     print("警告: 损失计算中出现NaN值")
                     torch.save(self.state_dict(),
@@ -1136,7 +962,6 @@ class HGVAE(pl.LightningModule):
                 if hyp2edge_feat is not None and self.cfg.loss.lambda_hyp2edge > 0.001:
                     reconstruct_E += hyp2edge_feat #* self.cfg.loss.lambda_hyp2edge
 
-                # 检查重建结果是否有NaN
                 if torch.isnan(reconstruct_x).any() or torch.isnan(reconstruct_E).any():
                     print("警告: 重建结果中存在NaN值")
                     print(
@@ -1154,26 +979,6 @@ class HGVAE(pl.LightningModule):
         return {'loss': loss}
 
     def test_step(self, batch, batch_idx):
-        # dense_data, node_mask = utils.to_dense(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
-        # x, E = dense_data.X, dense_data.E
-        # adj, edge_labels = utils.process_edge_attr(E, node_mask)
-        # node_labels = x
-        # B = x.size(0)
-        # N = x.size(1)
-
-        # test_manifold_lorentz = Lorentz(k=float(self.cfg.model.k_out))
-        # ## attention: the fllowing lines is for PoincareBall, so we need to change it to PoincareBall
-        # test_manifold = PoincareBall(dim= self.cfg.model.hidden_channels, c = 1/float(self.cfg.model.k_out))  # k = 1/c
-
-        # _pz_mu = nn.Parameter(torch.zeros(B, N, self.cfg.model.hidden_channels), requires_grad=False)
-        # _pz_logvar = nn.Parameter(torch.zeros(1, 1), requires_grad=False)
-
-        # pz = WrappedNormal(_pz_mu.mul(1), F.softplus(_pz_logvar).div(math.log(2)).mul(self.cfg.model.prior_std), test_manifold)
-        # sample_z = pz.rsample().to(x.device)
-        # # sample_z = test_manifold.random_normal((x.size(0), x.size(1), self.cfg.model.out_channels + 1)).to(x.device)
-        # sample_lorentz = test_manifold_lorentz.poincare_to_lorentz(sample_z)
-        # samples_x, sample_E, sample_adj = self.model.decode(sample_z, None)
-
         return {'loss': 0}
 
     @torch.no_grad()

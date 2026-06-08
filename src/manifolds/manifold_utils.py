@@ -230,7 +230,6 @@ class LeakyClamp(torch.autograd.Function):
 
     @staticmethod
     def setup_context(ctx: Any, inputs, output):
-        # 保存上下文信息以支持 functorch 变换
         x, min, max = inputs
         mask = x.ge(min) & x.le(max)
         ctx.save_for_backward(mask)
@@ -238,20 +237,14 @@ class LeakyClamp(torch.autograd.Function):
         ctx.min = min
         ctx.max = max
         
-    # @staticmethod
-    # def setup_context(ctx, inputs, output):
-        # x, ind, ind_inv, dim = inputs
-        # ctx.save_for_backward(ind, ind_inv)
-        # ctx.dim = dim
     @staticmethod
     def jvp(ctx, x_tangent: torch.Tensor, min=None, max=None):
         """
         Implements forward-mode automatic differentiation for the function.
         """
-        mask, = ctx.saved_tensors  # 从上下文中获取掩码
-        # 如果输入值在 [min, max] 内，则导数直接通过
+        mask, = ctx.saved_tensors 
         tangent_out = x_tangent.clone()
-        tangent_out[~mask] = 0  # 超出范围的值的导数置零
+        tangent_out[~mask] = 0  
         return tangent_out
     
     @staticmethod
@@ -261,11 +254,6 @@ class LeakyClamp(torch.autograd.Function):
         return grad_output * mask + grad_output * (1 - mask) * eps, None, None
 
 
-    # @staticmethod
-    # def vmap(info: Any, in_dims, x: torch.Tensor, min: float, max: float) -> torch.Tensor:
-    #     with torch.no_grad():
-    #         ctx.save_for_backward(x.ge(min) & x.le(max))
-    #         return torch.clamp(x, min=min, max=max)
 
 def clamp(x: torch.Tensor, min: float = float("-inf"), max: float = float("+inf")) -> torch.Tensor:
     return torch.clamp(x, min=min, max=max)
@@ -286,10 +274,6 @@ class Atanh(torch.autograd.Function):
         res = (torch.log_(1 + x).sub_(torch.log_(1 - x))).mul_(0.5)
         return res
 
-    # @staticmethod
-    # def setup_context(ctx: Any, inputs, output):
-    #     # Save inputs for functorch transforms like vmap, jvp
-    #     ctx.save_for_backward(*inputs)
         
     @staticmethod
     def backward(ctx: Any, grad_output: torch.Tensor) -> torch.Tensor:
@@ -321,10 +305,7 @@ class Acosh(torch.autograd.Function):
             ctx.save_for_backward(x, z)
             return torch.log(x + z)
 
-    # @staticmethod
-    # def setup_context(ctx: Any, inputs, output):
-    #     # Save inputs for functorch transforms like vmap, jvp
-    #     ctx.save_for_backward(*inputs)
+
         
     @staticmethod
     def backward(ctx: Any, grad_output: torch.Tensor) -> torch.Tensor:
@@ -333,20 +314,7 @@ class Acosh(torch.autograd.Function):
         z_ = z
         return grad_output / z_
     
-    # @staticmethod
-    # def vmap(info: Any, in_dims: Any, x: torch.Tensor) -> torch.Tensor:
-    #     """
-    #     Custom vmap implementation for Acosh.
-    #     """
-    #     x_clamped = clamp(x, min=1 + eps)
-    #     z = torch.sqrt(torch.clamp(x_clamped * x_clamped - 1, min=eps))
-    #     return torch.log(x_clamped + z), in_dims
 
-
-
-###
-# 带有 clamping： 如果x > 1+eps，梯度会正常计算。否则，梯度将为 0。
-###
 def acosh(x: torch.Tensor) -> torch.Tensor:
     """
     Numerically stable arccosh that never returns NaNs.

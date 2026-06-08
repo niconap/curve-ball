@@ -68,7 +68,8 @@ optim:
 
 integrate:
   div_mode: rademacher # "exact" is an alternative
-  method: vt_prediction # x1_prediction, euler
+  # method: x1_prediction #vt_prediction # x1_prediction, euler
+  method: use_flow_map
   num_steps: 100
   normalize_loglik: True # this is normalized by dimension
   inference_anneal_slope: 0.0

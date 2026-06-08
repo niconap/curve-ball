@@ -5,44 +5,8 @@ import torch
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
-from src.manifolds.lorentz import Lorentz
 
-# DiT transformer
-class DiTAttention(nn.Module):
-    def __init__(self, cfg, product_manifold):
-        super().__init__()
-        self.manifold_in = Lorentz(k=float(cfg.model.k_out))
-        self.manifold_hidden = Lorentz(k=float(cfg.model.k_out))
-        self.manifold_out = Lorentz(k=float(cfg.model.k_out))
-        self.product_manifold = product_manifold
-        hidden_size = cfg.model.hidden_channels + cfg.model.edge_dim
-        self.t_embedder = TimestepEmbedder(hidden_size)
-        self.positional_encoding = PositionalEncoding(hidden_size)
-        self.trans_conv = nn.ModuleList([
-            DiTBlock(cfg, self.product_manifold) for _ in range(cfg.model.trans_num_layers)
-        ])
-        
-        self.final_decode = torch.nn.Linear(hidden_size, hidden_size)
-        
-        # self.time_embedder = nn.Linear(1, self.hidden_channels)
-    def forward(self, t, x, mask=None):
-        z = x + self.positional_encoding(x)
-        t = self.t_embedder(t)
-        for block in self.trans_conv:
-            z = block(z, t, mask)                  
-        # z = self.trans_conv(x, t, mask=mask)
-        # z = self.final_decode(x)
-        # vector_field = self.product_manifold.proju(x, z)
-        z = self.product_manifold.projx(z)
-        # vector_field = self.product_manifold.logmap(x, z)
-        vector_field = z
-        if mask is not None:
-            mask = mask.unsqueeze(-1).bool()
-            vector_field = vector_field.masked_fill(~mask, 0)
-        # vector_field = self.product_manifold.logmap(x, z)
-        return vector_field
-    
-    
+     
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, max_len=5000):
         super().__init__()
@@ -159,37 +123,6 @@ class BertSelfAttention(nn.Module):
         return context_layer
     
     
-
-class DiTBlock(nn.Module):
-    """
-    A DiT block with adaptive layer norm zero (adaLN-Zero) conditioning.
-    """
-    def __init__(self, cfg, manifold):
-        super().__init__()
-        hidden_size = cfg.model.hidden_channels + cfg.model.edge_dim
-        num_heads = cfg.model.trans_num_heads
-        dropout = cfg.model.trans_dropout
-        mlp_ratio= 4.0
-        self.manifold = manifold
-        
-        self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        self.attn = BertSelfAttention(num_attention_heads=num_heads, hidden_size=hidden_size, dropout_prob=dropout)
-        self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        mlp_hidden_dim = int(hidden_size * mlp_ratio)
-        approx_gelu = lambda: nn.GELU(approximate="tanh")
-        self.mlp = Mlp(in_features=hidden_size, hidden_features=mlp_hidden_dim, act_layer=approx_gelu, drop=dropout)
-        self.adaLN_modulation = nn.Sequential(
-            nn.SiLU(),
-            nn.Linear(hidden_size, 6 * hidden_size, bias=True)
-        )
-
-    def forward(self, x, c, mask):
-        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(c).chunk(6, dim=-1)
-        x = x + gate_msa * self.attn(modulate(self.norm1(x), shift_msa, scale_msa), mask)
-        x = self.manifold.projx(x)
-        x = x + gate_mlp * self.mlp(modulate(self.norm2(x), shift_mlp, scale_mlp))
-        x = self.manifold.projx(x)
-        return x
     
 class TimestepEmbedder(nn.Module):
     """

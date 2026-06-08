@@ -4,7 +4,6 @@ from torch.distributions import Normal, Independent
 from numbers import Number
 from torch.distributions.utils import _standard_normal, broadcast_all
 import pdb
-from src.manifolds.lorentz import Lorentz
 
 def _mobius_add(x: torch.Tensor, y: torch.Tensor, k: torch.Tensor, dim: int = -1):
     x2 = x.pow(2).sum(dim=dim, keepdim=True)
@@ -32,18 +31,6 @@ def _mobius_add(x: torch.Tensor, y: torch.Tensor, k: torch.Tensor, dim: int = -1
     print({torch.isinf(denom).any().item()})
     print()
 
-    # minimize denom (omit K to simplify th notation)
-    # 1)
-    # {d(denom)/d(x) = 2 y + 2x * <y, y> = 0
-    # {d(denom)/d(y) = 2 x + 2y * <x, x> = 0
-    # 2)
-    # {y + x * <y, y> = 0
-    # {x + y * <x, x> = 0
-    # 3)
-    # {- y/<y, y> = x
-    # {- x/<x, x> = y
-    # 4)
-    # minimum = 1 - 2 <y, y>/<y, y> + <y, y>/<y, y> = 0
     return num / denom.clamp_min(1e-15)
 
 def _lambda_x(x: torch.Tensor, k: torch.Tensor, keepdim: bool = False, dim: int = -1):
@@ -53,7 +40,6 @@ def sign(x):
     return torch.sign(x.sign() + 0.5)
 
 def abs_zero_grad(x):
-    # this op has derivative equal to 1 at zero
     return x * sign(x)
 
 
@@ -324,170 +310,5 @@ class WrappedNormalPoincare(torch.distributions.Distribution):
         
         except Exception as e:
             print(f"Error in WrappedNormalPoincare.log_prob: {e}")
-            # Return a reasonable default log probability
-            return torch.ones_like(x[..., 0:1]) * -100
-    
-    
-    
-class WrappedNormalLorentz(torch.distributions.Distribution):
-
-    arg_constraints = {'mu': torch.distributions.constraints.real,
-                       'log_var': torch.distributions.constraints.real}
-    support = torch.distributions.constraints.real
-    has_rsample = True
-    _mean_carrier_measure = 0
-
-    @property
-    def mean(self):
-        return self.mu
-
-    @property
-    def scale(self):
-        # return torch.exp(0.5 * self.log_var)
-        return self.log_var
-        
-    # 实际传入的不是logvar，而是var，模型输出了logvar，但在传入这里前做了exp操作
-    def __init__(self, mu, log_var, manifold, validate_args=None):
-        self.device = mu.device
-        self.dtype = mu.dtype
-        self.mu, self.log_var = broadcast_all(mu, log_var)
-        self.manifold = manifold.to(self.device)
-        
-        if isinstance(mu, Number) and isinstance(log_var, Number):
-            batch_shape, event_shape = torch.Size(), torch.Size()
-        elif isinstance(manifold, Lorentz):
-            batch_shape = self.mu.shape[:-1]
-            event_shape = torch.Size([self.mu.shape[-1]])
-        else:
-            batch_shape = self.mu.shape[:-1]
-            event_shape = torch.Size([self.manifold.dim])
-        super(WrappedNormalLorentz, self).__init__(batch_shape, event_shape, validate_args=validate_args)
-
-    def sample(self, shape=torch.Size()):
-        with torch.no_grad():
-            return self.rsample(shape)
-
-    def rsample(self, sample_shape=torch.Size()):
-        try:
-            shape = self._extended_shape(sample_shape)
-            eps = _standard_normal(shape, dtype=self.mean.dtype, device=self.mean.device)
-            
-            # Add numerical stability to scale
-            safe_scale = torch.where(
-                torch.isnan(self.scale) | torch.isinf(self.scale) | (self.scale < 1e-15),
-                torch.ones_like(self.scale) * 1e-5,
-                self.scale
-            )
-            
-            z = eps * safe_scale + self.mu
-            z = torch.cat([torch.zeros((*z.shape[:-1], 1), device=z.device, dtype=z.dtype), z], dim=-1)
-            
-            # Add checks for invalid values before manifold operations
-            if torch.isnan(z).any() or torch.isinf(z).any():
-                print("Warning: NaN or Inf detected in WrappedNormalLorentz z before proju0")
-                # Replace problematic values with small random values
-                z = torch.where(torch.isnan(z) | torch.isinf(z), 
-                               torch.randn_like(z) * 1e-5, 
-                               z)
-            
-            z = self.manifold.proju0(z)
-            
-            # Add checks again after proju0
-            if torch.isnan(z).any() or torch.isinf(z).any():
-                print("Warning: NaN or Inf detected in WrappedNormalLorentz z after proju0")
-                # If projection introduced NaNs, resort to safe fallback
-                safe_z = torch.cat([
-                    torch.ones((*self.mu.shape[:-1], 1), device=self.mu.device, dtype=self.mu.dtype),
-                    torch.zeros_like(self.mu)
-                ], dim=-1)
-                z = safe_z
-            
-            # Try the exponential map with error handling
-            try:
-                z = self.manifold.expmap0(z)
-                
-                # Final check for valid output
-                if torch.isnan(z).any() or torch.isinf(z).any():
-                    raise ValueError("expmap0 produced NaN or Inf values")
-                    
-            except Exception as inner_e:
-                print(f"Error in expmap0: {inner_e}")
-                # Return a safe point on the manifold if expmap fails
-                z = torch.cat([
-                    torch.ones((*self.mu.shape[:-1], 1), device=self.mu.device, dtype=self.mu.dtype),
-                    torch.zeros_like(self.mu)
-                ], dim=-1)
-                
-            return z
-            
-        except Exception as e:
-            print(f"Error in WrappedNormalLorentz.rsample: {e}")
-            # Return the origin point of the manifold as fallback
-            return torch.cat([
-                torch.ones((*self.mu.shape[:-1], 1), device=self.mu.device, dtype=self.mu.dtype),
-                torch.zeros_like(self.mu)
-            ], dim=-1)
-
-    def log_prob(self, x):
-        try:
-            shape = x.shape
-            
-            # Check and handle input tensor before manifold operations
-            if torch.isnan(x).any() or torch.isinf(x).any():
-                print("Warning: NaN or Inf detected in input to WrappedNormalLorentz.log_prob")
-                # Return a reasonable default log probability for bad inputs
-                return torch.ones_like(x[..., 0:1]) * -100
-            
-            # Safely compute logmap0
-            try:
-                v = self.manifold.logmap0(x)
-                
-                # Check for problematic values after logmap
-                if torch.isnan(v).any() or torch.isinf(v).any():
-                    print("Warning: NaN or Inf detected after logmap0 in WrappedNormalLorentz")
-                    return torch.ones_like(x[..., 0:1]) * -100
-                
-            except Exception as e:
-                print(f"Error in logmap0: {e}")
-                return torch.ones_like(x[..., 0:1]) * -100
-            
-            # Safely compute logdet0
-            try:
-                logdetexp = self.manifold.logdet0(v, keepdim=True)
-                # Clamp to prevent extreme values
-                logdetexp = torch.clamp(logdetexp, min=-100, max=100)
-            except Exception as e:
-                print(f"Error in logdet0: {e}")
-                logdetexp = torch.zeros_like(x[..., 0:1])
-            
-            # Extract tangent vector components
-            v = v[..., 1:]
-            
-            # Ensure scale is positive and not problematic
-            safe_scale = torch.where(
-                torch.isnan(self.scale) | torch.isinf(self.scale) | (self.scale <= 0),
-                torch.ones_like(self.scale) * 1e-5,
-                self.scale
-            )
-            
-            # Safely compute normal PDF
-            norm_pdf = Normal(self.mu, safe_scale).log_prob(v).sum(-1, keepdim=True)
-            
-            # Combine results with safety checks
-            result = norm_pdf - logdetexp
-            
-            # Handle any remaining NaN or inf values in final result
-            if torch.isnan(result).any() or torch.isinf(result).any():
-                print("Warning: NaN or Inf in final WrappedNormalLorentz log_prob result")
-                result = torch.where(
-                    torch.isnan(result) | torch.isinf(result), 
-                    torch.ones_like(result) * -100,  # default to very low probability
-                    result
-                )
-            
-            return result
-            
-        except Exception as e:
-            print(f"Error in WrappedNormalLorentz.log_prob: {e}")
             # Return a reasonable default log probability
             return torch.ones_like(x[..., 0:1]) * -100
