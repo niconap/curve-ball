@@ -19,7 +19,21 @@ use_att: 0 # 'whether to use hyperbolic attention or not'
 local_agg: 0 # 'whether to local tangent space aggregation or not'
 act: "relu" # 'activation function'
 dim: 16 # 'dimension of the hidden layers'
-feat_dim: 1 # 'it is a placeholder, and will be update in the process, dimension of the input features'
 node_classes: 4 # 'number of classes for node classification'
 edge_classes: 4 # 'number of classes for edge classification'
 
+use_poincare: true
+extra_features: null
+shuffle_dense_graph: false
+add_time_encoding: false
+
+latent_channels: 64
+lgcn_in_channels: null
+lgcn_out_channels: null
+lgcn_in_edge_channels: null
+
+use_resnet: false
+use_layernorm: false
+sample_codebook_temp: null
+
+feat_dim: 2

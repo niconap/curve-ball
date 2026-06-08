@@ -78,38 +78,13 @@ class Euclidean2(geoopt_Euclidean):
         return (p1 - p2).pow(2).sum(dim=-1)
     
     def cdist(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-        """
-        计算两个张量之间的欧式距离矩阵
-        
-        Args:
-            x: 形状为 [B, N, D] 的张量
-            y: 形状为 [B, N, D] 的张量
-            
-        Returns:
-            形状为 [B, N, N] 的距离矩阵
-        """
-        # 确保输入张量的形状正确
-        assert x.dim() == 3 and y.dim() == 3, "输入张量必须是3维的"
-        assert x.shape[0] == y.shape[0], "批次大小必须相同"
-        assert x.shape[2] == y.shape[2], "特征维度必须相同"
-        
-        # 计算欧式距离
-        # 1. 计算 x^2
         x_squared = torch.sum(x * x, dim=2, keepdim=True)  # [B, N, 1]
-        
-        # 2. 计算 y^2
         y_squared = torch.sum(y * y, dim=2, keepdim=True)  # [B, N, 1]
         
-        # 3. 计算 -2xy
         xy = torch.bmm(x, y.transpose(1, 2))  # [B, N, N]
-        
-        # 4. 组合得到距离矩阵: x^2 + y^2 - 2xy
         distance_matrix = x_squared + y_squared.transpose(1, 2) - 2 * xy
         
-        # 5. 确保距离非负（由于浮点数计算可能会有小的负值）
         distance_matrix = torch.clamp(distance_matrix, min=0.0)
-        
-        # 6. 开平方得到最终距离
         distance_matrix = torch.sqrt(distance_matrix)
         
         return distance_matrix

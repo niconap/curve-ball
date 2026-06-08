@@ -18,18 +18,8 @@ from torch.func import vjp, jvp, vmap, jacrev
 from torchdiffeq import odeint
 # from src.ema import EMA
 from models.arch import tMLP, ProjectToTangent, Unbatch
-# from manifolds import (
-#     # Sphere,
-#     # FlatTorus,
-#     # Euclidean,
-#     # ProductManifold,
-#     # Mesh,
-#     # SPD,
-#     PoincareBall,
-# )
-# from src.manifolds.poincareball import PoincareBall as PoincareBall2
-from src.models.hyperbolic_nn_plusplus.geoopt_plusplus.manifolds import PoincareBall
-# from src.models.hyperbolic_nn_plusplus.geoopt_plusplus.manifolds.stereographic.manifold_new import PoincareBall
+
+from src.models.hyperbolic_nn_plusplus.geoopt_plusplus.manifolds.stereographic.manifold_new import PoincareBall
 import manifolds
 from manifolds.geodesic import geodesic
 from solvers import projx_integrator_return_last, projx_integrator
@@ -554,6 +544,8 @@ class ManifoldFMLitModule(pl.LightningModule):
             x_t = x_t.reshape(N, MAX_NODES, -1)
             u_t = u_t.reshape(N, MAX_NODES, -1)
 
+            # x_t = self.vecfield(t, x_t).squeeze(0)
+            # v_t = self.manifold.logmap(x0, x_t)
             x_t_1 = self.vecfield(t, x_t)
             v_t = self.manifold.logmap(x_t, x_t_1)
 
@@ -576,7 +568,19 @@ class ManifoldFMLitModule(pl.LightningModule):
             if self.hyp_channels>0 and self.euc_channels>0:
                 x1 = torch.concat((node_feat, edge_feat), dim=-1)
             
+            
+            # x0 = self.product_manifold.random(*x1.shape, device=self.device, dtype=x1.dtype, std=self.prior_std).to(x1)
+
+            # 从码本的大小中采一个均匀分布的index, 然后根据这个index从码本中采样一个向量作为x0
+            # pdb.set_trace()
+            # if self.VAE.model.hyp_codebook is not None:
+            #     hyp_indices = torch.randint(0, self.VAE.model.hyp_codebook.codebook.shape[0], (x1.shape[0],x1.shape[1], ), device=self.device)
+            #     x0 = F.embedding(hyp_indices, self.VAE.model.hyp_codebook.codebook)
+            # else:
+            #     x0 = self.product_manifold.random(*x1.shape, device=self.device, dtype=x1.dtype, std=self.prior_std).to(x1)
             x0 = self.product_manifold.random(*x1.shape, device=self.device, dtype=x1.dtype, std=self.prior_std).to(x1)
+            
+            
             # log distribution of x0
             x0_norm = torch.norm(x0, p=2, dim=-1)
             x1_norm = torch.norm(x1, p=2, dim=-1)
@@ -590,6 +594,7 @@ class ManifoldFMLitModule(pl.LightningModule):
             to_log.update({"train/x1_norm_max": x1_norm.max().item()})
             to_log.update({"train/x1_norm_mean": x1_norm.mean().item()})
             wandb.log(to_log)
+
             N = x1.shape[0]
             MAX_NODES = x1.shape[1]
             t = torch.rand(N).reshape(-1, 1).to(x1)
@@ -630,6 +635,7 @@ class ManifoldFMLitModule(pl.LightningModule):
 
                 out = self.vecfield(t, t, xt, mask=node_mask)
                 diff = out - vt
+                ## swap the inner for manual calculation
                 fm_loss_per_node = self.product_manifold.inner(
                     xt.reshape(-1, xt.shape[-1]),
                     diff.reshape(-1, diff.shape[-1]),
@@ -667,8 +673,6 @@ class ManifoldFMLitModule(pl.LightningModule):
             self.manual_backward(loss)
             self.clip_gradients(
                 optimizer=opt_euc,
-                # gradient_clip_val=self.glob_cfg.train.clip_grad,
-                # gradient_clip_algorithm="norm"
                 gradient_clip_val=self.cfg.train.manual_setting.gradient_clip_val,
                 gradient_clip_algorithm=self.cfg.train.manual_setting.gradient_clip_algorithm
 
@@ -710,6 +714,8 @@ class ManifoldFMLitModule(pl.LightningModule):
         """
         vecfield_out = self.vecfield(s, t, i_s, mask=node_mask)
         
+        # t and s are (N, 1); vecfield_out is (N, MAX_NODES, D)
+        # We need (t - s) to broadcast as (N, 1, 1)
         dt = (t - s).view(t.shape[0], *([1] * (vecfield_out.dim() - 1)))
         
         return self.product_manifold.exp(
@@ -746,6 +752,7 @@ class ManifoldFMLitModule(pl.LightningModule):
 
         N, MAX_NODES, D = xst.shape  # 32, 17, 64
 
+
         x_sq_norm = xst.pow(2).sum(dim=-1, keepdim=True).clamp(max=1 - 1e-4)  # (N, MAX_NODES, 1)
         lambda_x = 2.0 / (1.0 - x_sq_norm)                                    # (N, MAX_NODES, 1)
         
@@ -772,7 +779,6 @@ class ManifoldFMLitModule(pl.LightningModule):
             # skip step if loss is NaN.
             print(f"Skipping iteration because loss is {loss_dict['loss'].item()}.")
             return None
-
         return loss_dict
 
     def on_train_epoch_end(self):
@@ -906,7 +912,6 @@ class ManifoldFMLitModule(pl.LightningModule):
             valid_result["ratio_clustering"] = clustering_dist
             valid_result["ratio_orbit_dist"] = orbit_dist
         
-
         for metric_name, value in valid_result.items():
             print(f'{metric_name}: {value:.3f}')
             self.log(f'sampling_metrics/{metric_name}', value, on_epoch=True, prog_bar=True)

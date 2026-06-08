@@ -1,13 +1,13 @@
 #!/bin/bash
-#SBATCH --job-name=ego_small_hyp_flow
+#SBATCH --job-name=euc_comm20_hyp_flow
 #SBATCH --partition=gpu_a100
 #SBATCH --gpus=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=9
-#SBATCH --time=24:00:00
+#SBATCH --time=15:00:00
 #SBATCH --array=0-4
-#SBATCH --output=outputs/ego_small_hyp_flow_%A_%a.out
-#SBATCH --error=outputs/ego_small_hyp_flow_%A_%a.err
+#SBATCH --output=outputs/comm20_hyp_flow_euc_%A_%a.out
+#SBATCH --error=outputs/comm20_hyp_flow_euc_%A_%a.err
 
 module purge
 module load 2024
@@ -31,12 +31,12 @@ else
 fi
 
 CURVATURES=(0.1 0.5 1.0 2.5 5.0)
-EGO_SMALL_VAE_CHECKPOINTS=(
-  "/home/scur0096/outputs/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c0.1-ego_small/VAE/2026-05-09/14-49-00/checkpoints/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c0.1/last-v1.ckpt"
-  "/home/scur0096/outputs/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c0.5-ego_small/VAE/2026-05-09/14-48-45/checkpoints/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c0.5/last-v1.ckpt"
-  "/home/scur0096/outputs/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c1.0-ego_small/VAE/2026-05-09/14-48-45/checkpoints/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c1.0/last-v1.ckpt"
-  "/home/scur0096/outputs/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c2.5-ego_small/VAE/2026-05-09/14-48-45/checkpoints/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c2.5/last-v1.ckpt"
-  "/home/scur0096/outputs/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c5.0-ego_small/VAE/2026-05-09/14-48-45/checkpoints/ego_small_VQVAE_32code_hyp64_euc0_decode_pairwise_interactiondecode_c5.0/last-v1.ckpt"
+COMM20_VAE_CHECKPOINTS=(
+  "/home/scur0096/outputs/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction-comm20/VAE/2026-05-09/14-48-45/checkpoints/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction_c0.1/last-v1.ckpt"
+  "/home/scur0096/outputs/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction-comm20/VAE/2026-05-09/14-48-45/checkpoints/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction_c0.5/last-v1.ckpt"
+  "/home/scur0096/outputs/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction-comm20/VAE/2026-05-09/14-48-45/checkpoints/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction_c1.0/last-v1.ckpt"
+  "/home/scur0096/outputs/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction-comm20/VAE/2026-05-09/14-48-45/checkpoints/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction_c2.5/last-v1.ckpt"
+  "/home/scur0096/outputs/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction-comm20/VAE/2026-05-09/14-48-45/checkpoints/comm20_VQVAE_32code_hyp64_euc0_decode_pairwise_interaction_c5.0/last-v1.ckpt"
 )
 
 FLOW_CHECKPOINT="${FLOW_CHECKPOINT:-None}"
@@ -44,11 +44,11 @@ TEST_ONLY="${TEST_ONLY:-false}"
 
 IDX="${SLURM_ARRAY_TASK_ID}"
 CURVATURE="${CURVATURES[$IDX]}"
-VAE_CHECKPOINT="${EGO_SMALL_VAE_CHECKPOINTS[$IDX]}"
+VAE_CHECKPOINT="${COMM20_VAE_CHECKPOINTS[$IDX]}"
 
 if [[ "${VAE_CHECKPOINT}" == /path/to/* ]] || [ ! -f "${VAE_CHECKPOINT}" ]; then
   echo "Invalid VQ-VAE checkpoint for index=${IDX}: ${VAE_CHECKPOINT}"
-  echo "Please replace placeholder paths in jobs/ego_small_hyp_flow_array.job."
+  echo "Please replace placeholder paths in jobs/comm20_hyp_flow_array.job."
   exit 1
 fi
 
@@ -57,9 +57,10 @@ echo "VQ-VAE checkpoint: ${VAE_CHECKPOINT}"
 echo "Flow checkpoint: ${FLOW_CHECKPOINT}"
 echo "Test only: ${TEST_ONLY}"
 
-time python3 src/train_flow.py \
-  +experiment=ego_small_hyp \
-  dataset=ego_small \
+# Execute using our modified Euclidean pipeline handler
+time python3 src/train_flow_euc.py \
+  +experiment=comm20_hyp_euc \
+  dataset=comm20 \
   loss=VQVAE \
   model.c="${CURVATURE}" \
   model.k_in="${CURVATURE}" \
@@ -70,6 +71,7 @@ time python3 src/train_flow.py \
   dataset.debug=false \
   model.hyp_channels=64 \
   model.latent_channels=64 \
+  model.euc_channels=0 \
   loss.codebook_size=32 \
   flow_train.VAE_checkpoint="${VAE_CHECKPOINT}" \
   flow_train.Flow_checkpoint="${FLOW_CHECKPOINT}" \

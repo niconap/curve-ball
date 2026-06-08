@@ -8,7 +8,6 @@ import manifolds
 from src.models.layers import GraphAttentionLayer 
 from src.models.layers import GraphConvolution, Linear, get_dim_act
 import src.models.hyper_layers as hyp_layers
-from src.manifolds.lorentz import Lorentz
 from src.models.hyperbolic_nn_plusplus.geoopt_plusplus.manifolds.stereographic import PoincareBall
 import pdb
 
@@ -129,71 +128,6 @@ class HGCN(Encoder):
         return super(HGCN, self).encode(x_hyp, adj)
 
 
-def get_lgcn_dims(cfg):
-    # in_features = [cfg.model.lgcn_in_channels]
-    # out_features = [cfg.model.lgcn_out_channels]
-    # in_edge_feature = [cfg.model.lgcn_in_edge_channels]
-    # for i in range(cfg.model.num_layers - 1):
-    #     in_features.append(cfg.model.lgcn_out_channels)
-    #     out_features.append(cfg.model.lgcn_out_channels)
-    #     in_edge_feature.append(cfg.model.lgcn_out_channels)
-    # 
-    in_features = [cfg.model.latent_channels, cfg.model.latent_channels]
-    out_features = [cfg.model.latent_channels, cfg.model.latent_channels]
-    in_edge_feature = [cfg.model.latent_channels, cfg.model.latent_channels]
-    return in_features, out_features, in_edge_feature
-
-class LGCN(nn.Module):
-    def __init__(self, cfg):
-        # super(LGCN, self).__init__()
-        super().__init__()
-        self.cfg = cfg
-        self.manifold_in = Lorentz(k=float(cfg.model.k_in))
-        self.manifold_hidden = Lorentz(k=float(cfg.model.k_hidden))
-        self.manifold_out = Lorentz(k=float(cfg.model.k_out))
-        self.manifold_list = [self.manifold_in, self.manifold_hidden, self.manifold_out]
-        assert cfg.model.num_layers > 1
-        lgnn_layers = []
-        in_features, out_features, in_edge_feature = get_lgcn_dims(cfg)
-        for i in range(cfg.model.num_layers):
-            lgnn_layers.append(
-                hyp_layers.LorentzGraphNeuralNetwork(
-                    self.manifold_list[i], self.manifold_list[i+1], in_features[i], out_features[i], in_edge_feature[i]
-                )
-            )
-            
-        self.node_linear = hyp_layers.LorentzHypLinear(self.manifold_in, in_features[0], out_features[0], bias = True)
-        self.edge_linear = hyp_layers.LorentzHypLinear(self.manifold_in, in_edge_feature[0], out_features[0], bias = True)
-        
-        self.layers = nn.Sequential(*lgnn_layers)
-        self.encode_graph = True
-        # self.linear_node = nn.Linear(self.cfg.model.node_classes, self.cfg.model.node_classes)
-        # self.linear_edge = nn.Linear(self.cfg.model.edge_classes, self.cfg.model.edge_classes)
-
-    def encode(self, x, adj, e, x_manifold='hyp'):
-        '''
-        x: [batch_size, num_nodes, in_features]
-        adj: [batch_size, num_nodes, num_nodes]
-        e: [batch_size, num_nodes, num_nodes, in_edge_features]
-        mask: [batch_size, num_nodes]
-        '''
-        # print(f'lorentz tangent {x.shape}')
-        # pdb.set_trace()
-        # x = self.linear_node(x)
-        # e = self.linear_edge(e)
-        if x_manifold != 'hyp':
-            #TODO: 映射到双曲空间的方法是否可以改进
-            x = torch.cat([torch.ones_like(x)[..., 0:1], x], dim=-1)
-            x = self.manifold_in.expmap0(x)
-            e = torch.cat([torch.ones_like(e)[..., 0:1], e], dim=-1)
-            e = self.manifold_in.expmap0(e)
-        
-        h_n = self.node_linear.forward(x) ## problem is h1+
-        h_e = self.edge_linear.forward(e)
-        input = (h_n, adj, h_e)
-        output, _, _ = self.layers.forward(input)
-        return output
-    
 
 class PoincareGCN(nn.Module):
     def __init__(self, k, cfg):

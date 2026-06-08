@@ -16,14 +16,12 @@ def has_analytic_kl(type_p, type_q):
 
 def create_folders(args):
     try:
-        # os.makedirs('checkpoints')
         os.makedirs('graphs')
         os.makedirs('chains')
     except OSError:
         pass
 
     try:
-        # os.makedirs('checkpoints/' + args.general.name)
         os.makedirs('graphs/' + args.general.name)
         os.makedirs('chains/' + args.general.name)
     except OSError:
@@ -66,9 +64,7 @@ def unnormalize(X, E, y, norm_values, norm_biases, node_mask, collapse=False):
 
 
 def to_dense(x, edge_index, edge_attr, batch):
-    # pdb.set_trace()
     X, node_mask = to_dense_batch(x=x, batch=batch)
-    # node_mask = node_mask.float()
     edge_index, edge_attr = torch_geometric.utils.remove_self_loops(edge_index, edge_attr)
     max_num_nodes = X.size(1)
     E = to_dense_adj(edge_index=edge_index, batch=batch, edge_attr=edge_attr, max_num_nodes=max_num_nodes)
@@ -99,19 +95,14 @@ def encode_no_edge(E):
     assert len(E.shape) == 4
     if E.shape[-1] == 0:
         return E
-    no_edge = torch.sum(E, dim=3) == 0  ## (b, n, n), find the no edge
+    no_edge = torch.sum(E, dim=3) == 0  
     first_elt = E[:, :, :, 0] 
     first_elt[no_edge] = 1
-    E[:, :, :, 0] = first_elt  ## after this, the first element of each edge is 1 if there is no edge
-    # TODO: fix shape error in qm9
-    # diag = torch.eye(E.shape[1], dtype=torch.bool).unsqueeze(0).expand(E.shape[0], -1, -1)
-    # E[diag] = 0
-    # [1,0,0,0,0] 代表没有边， [0,1,0,0,0] 代表边的类型为1
+    E[:, :, :, 0] = first_elt  
     return E
 
 def check_on_manifold(manifold, X, name):
     msg = manifold.check_point_on_manifold(X)
-    # print(f"{name} is on manifold: {msg}")
     
     
 def update_config_with_new_keys(cfg, saved_cfg):
@@ -158,7 +149,7 @@ class PlaceHolder:
         e_mask2 = x_mask.unsqueeze(1)             # bs, 1, n, 1
 
         if collapse:
-            self.X = torch.argmax(self.X, dim=-1)  # 对最后一维进行 softmax, 没有temperature
+            self.X = torch.argmax(self.X, dim=-1)  
             self.E = torch.argmax(self.E, dim=-1)
     
             self.X[node_mask == 0] = - 1
@@ -175,13 +166,11 @@ class PlaceHolder:
         e_mask2 = x_mask.unsqueeze(1)             # bs, 1, n, 1
 
         if collapse:
-            X_probs = torch.softmax(self.X, dim=-1)  # 对最后一维进行 softmax, 没有temperature
+            X_probs = torch.softmax(self.X, dim=-1)  
             E_probs = torch.softmax(self.E, dim=-1)
             
             self.X = torch.multinomial(X_probs.view(-1, X_probs.size(-1)), 1).view(X_probs.size()[:-1])
             self.E = torch.multinomial(E_probs.view(-1, E_probs.size(-1)), 1).view(E_probs.size()[:-1])            
-            # self.X = torch.argmax(self.X, dim=-1)
-            # self.E = torch.argmax(self.E, dim=-1)
 
             self.X[node_mask == 0] = - 1
             self.E[(e_mask1 * e_mask2).squeeze(-1) == 0] = - 1
@@ -218,18 +207,14 @@ def process_edge_attr(E, node_mask):
     
     '''
     adj = E[:, :, :, 0]
-    # adj 取反，其中为0的地方为1，为1的地方为0
     adj = 1 - adj
-    # adj 对角线为0
     diag = torch.eye(adj.shape[1], dtype=torch.bool).unsqueeze(0).expand(adj.shape[0], -1, -1)
     adj[diag] = 0
     
-    # **修改1**：E的对角线上第3维全部变为0
     batch_size, num_nodes, _, num_features = E.shape
     diag_mask = torch.eye(num_nodes, dtype=torch.bool).unsqueeze(0).unsqueeze(-1).expand(batch_size, -1, -1, num_features)
     E[diag_mask] = 0
     
-    # **修改2**：对mask位置的行和列，在第3维全部置为0
     mask_3d = node_mask.unsqueeze(1).expand(-1, num_nodes, -1)  # shape: (bs, n, n, 1)
     E[~mask_3d] = 0
     mask_3d_t = node_mask.unsqueeze(2).expand(-1, -1, num_nodes)  # shape: (bs, n, n, 1)

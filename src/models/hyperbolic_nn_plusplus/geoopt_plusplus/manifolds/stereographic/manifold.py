@@ -1,12 +1,16 @@
-from typing import List, Optional, Tuple
+from __future__ import annotations
 
+from typing import List, Optional, Tuple
+from abc import ABC, abstractmethod
+from geoopt.manifolds.stereographic import math as stereo_math
 import torch.nn
 
 import geoopt
 
 from . import math
 
-
+from torch import Tensor
+        
 class PoincareBall(geoopt.PoincareBall):
     def weighted_midpoint(
         self,

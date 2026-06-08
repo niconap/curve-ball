@@ -42,27 +42,37 @@ class HGCN(pl.LightningModule):
         self.train_metrics = train_metrics
         # pdb.set_trace()
         
-
-    def edge_decode(self, h, idx, batch_size, batch_index):
+    def edge_decode(self, h, idx, num_nodes, batch_index):
         """
         Decode edges with batch support.
         h: Node embeddings of shape (B, N, D)
         idx: Edge indices of shape (3, E), where the first row is batch indices
         batch_size: Number of graphs in the batch
         """
-        if self.manifold_name == 'Euclidean':
-            h = self.manifold.normalize(h)  # Normalize embeddings if Euclidean
+        if idx.numel() == 0:
+            return h.new_empty((0,))
 
-        # Batch-aware indexing
-        # [b, 2, E]
-        # batch_indices = idx[0]  # First row is batch indices
-        emb_in = h[batch_index, idx[0], :]  # Input embeddings
-        emb_out = h[batch_index, idx[1], :]  # Output embeddings
+        num_edges = idx.size(1)
 
-        # Compute squared distances and probabilities
+        if batch_index is None:
+            batch_index = torch.zeros(num_edges, device=h.device, dtype=torch.long)
+        else:
+            batch_index = batch_index.to(h.device).long()
+            if batch_index.numel() != num_edges:
+                batch_index = batch_index[:num_edges]
+
+        idx = idx.to(h.device).long()
+
+        emb_in = h[batch_index, idx[0], :]
+        emb_out = h[batch_index, idx[1], :]
+
         sqdist = self.manifold.sqdist(emb_in, emb_out, self.c)
-        probs = self.fd_decoder.forward(sqdist)
-        return probs
+
+        scores = self.fd_decoder.forward(sqdist)
+        scores = torch.nan_to_num(scores, nan=0.5, posinf=1.0, neginf=0.0)
+        scores = scores.clamp(min=1e-6, max=1.0 - 1e-6)
+
+        return scores
     
     def sample_edges(self, edge_index, num_nodes=None):
         """
@@ -70,10 +80,8 @@ class HGCN(pl.LightningModule):
         edge_index: Dense adjacency matrix of shape (B, N, N)
         num_nodes: Number of nodes per graph
         """
-        # pdb.set_trace()
         batch_size, N, _ = edge_index.size()
 
-        # Convert dense adjacency to sparse edges for each graph
         pos_edges = []
         neg_edges = []
         batch_idx = []
@@ -83,26 +91,19 @@ class HGCN(pl.LightningModule):
             if num_pos == 0:
                 continue
                 
-            # 2) 构造 [0..N-1] x [0..N-1] 所有可能的边
-            #    如果你不想采样自环，可以过滤 row == col
             row = torch.arange(N, device=edge_index.device).repeat_interleave(N)
             col = torch.arange(N, device=edge_index.device).repeat(N)
             all_edges = torch.stack([row, col], dim=-1)  # shape: (N*N, 2)
 
-            # 3) 在 all_edges 中去除 pos（已存在的边），得到负样本候选集合
-            #    做法：把每条边 (r, c) 映射成唯一索引 id = r * N + c，方便排重
             pos_ids = pos[:, 0] * N + pos[:, 1]
             all_ids = all_edges[:, 0] * N + all_edges[:, 1]
             
-            # 构造一个布尔掩码，标记那些不属于 pos_ids 的索引，才是负样本候选
-            # 由于 pos_ids 可能比较大，可以用集合来加速“排除”操作
             pos_ids_set = set(pos_ids.tolist())
             mask = [(id_ not in pos_ids_set) for id_ in all_ids.tolist()]
             mask = torch.tensor(mask, dtype=torch.bool, device=edge_index.device)
             neg_candidates = all_edges[mask]  # (N*N - E_i, 2)
 
             if neg_candidates.size(0) < num_pos:
-            # 如果负样本候选都不够多，按照需求处理，这里简单返回所有负样本
                 sampled_neg = neg_candidates
             else:
                 rand_idx = torch.randperm(neg_candidates.size(0), device=edge_index.device)[:num_pos]
@@ -110,12 +111,9 @@ class HGCN(pl.LightningModule):
             
             pos_edges.append(pos)
             neg_edges.append(sampled_neg)
-            # 记录当前图中每条正样本边的 batch_index
             batch_idx.append(torch.full((num_pos,), i, device=edge_index.device))
 
-        # 拼接得到最终输出
         if len(pos_edges) == 0:
-            # 若所有图都没有边，这里根据情况返回空张量
             return (torch.empty((2,0), dtype=torch.long, device=edge_index.device),
                     torch.empty((2,0), dtype=torch.long, device=edge_index.device),
                     torch.empty((0,),    dtype=torch.long, device=edge_index.device))
@@ -124,69 +122,13 @@ class HGCN(pl.LightningModule):
         neg_edge_index = torch.cat(neg_edges, dim=0).t()  # shape: (2, E_neg)
         batch_index = torch.cat(batch_idx, dim=0)         # shape: (E_pos,)
 
-        # pdb.set_trace()
-        # neg_edge_index = torch.cat([pos_edge_index[:1], neg_edge_index], dim=0)  # Add batch index
-
         return pos_edge_index, neg_edge_index, batch_index
     
-
-    # def sample_edges(self, edge_index, num_nodes):
-    #     """
-    #     Convert dense adjacency matrix to sparse edges and sample negative edges.
-    #     edge_index: Dense adjacency matrix of shape (B, N, N)
-    #     num_nodes: Number of nodes per graph
-    #     """
-    #     batch_size, N, _ = edge_index.size()
-
-    #     # Convert dense adjacency to sparse edges for each graph
-    #     pos_edges = []
-    #     batch_index = []
-    #     for i in range(batch_size):
-    #         edges = torch.nonzero(edge_index[i], as_tuple=False)  # (M, 2)
-    #         if edges.size(0) > 0:
-    #             pos_edges.append(edges)  # (M, 3)
-    #             batch_index.append(
-    #                 torch.full((edges.size(0),), i, device=edge_index.device)
-    #             )
-
-    #     pos_edge_index = torch.cat(pos_edges, dim=0).t()  # Shape: (3, E)
-    #     batch_index = torch.cat(batch_index, dim=0)  # Shape: (E,)
-    #     # Sample negative edges with batch index
-    #     neg_edge_index = torch.randint(0, N, pos_edge_index.size(), dtype=torch.long, device=edge_index.device)
-    #     # pdb.set_trace()
-    #     # neg_edge_index = torch.cat([pos_edge_index[:1], neg_edge_index], dim=0)  # Add batch index
-
-    #     return pos_edge_index, neg_edge_index, batch_index
-    
-    # def edge_decode(self, h, idx):
-    #     if self.manifold_name == 'Euclidean':
-    #         h = self.manifold.normalize(h)
-    #     emb_in = h[idx[:, 0], :]
-    #     emb_out = h[idx[:, 1], :]
-    #     sqdist = self.manifold.sqdist(emb_in, emb_out, self.c)
-    #     probs = self.fd_decoder.forward(sqdist)
-    #     return probs
-    
-    
-    # def sample_edges(self, edge_index, num_nodes):
-    #     """
-    #     Sample positive and negative edges for link prediction.
-    #     """
-    #     edge_index = torch.nonzero(edge_index, as_tuple=False)  # 转置为 (2, E)
-    #     pos_edge_index = edge_index.detach().clone().long()
-    #     neg_edge_index = torch.randint(0, num_nodes, edge_index.size(), dtype=torch.long).to(edge_index.device)
-    #     # return iterable of index intead of tensor, change the type of pos_edge_index and neg_edge_index
-    #     return pos_edge_index, neg_edge_index
-    
-    
     def training_step(self, batch, batch_idx):
-        # pdb.set_trace()
         dense_data, node_mask = utils.to_dense(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
-        # pdb.set_trace()
-        # dense_data = dense_data.mask(node_mask)
         x, E = dense_data.X, dense_data.E
 
-        adj, edge_labels = utils.process_edge_attr(E)
+        adj, edge_labels = utils.process_edge_attr(E, node_mask)
         node_labels = x
         # calculate the degree of each node as node feature
         degrees = adj.sum(dim=1)  # Summing over the rows gives the degree of each node
@@ -206,29 +148,6 @@ class HGCN(pl.LightningModule):
         # pdb.set_trace()
         loss = self.train_loss.forward({'node':node_labels, 'edge':edge_labels}, {'node':pred_node_labels, 'edge':pred_edge_labels}, pos_scores, neg_scores, log=True)
         
-        # print hook
-        # TODO: in the simplest case, where all given edges have positive labels, the model should be able to overfit the dataset, by always predicting 1.0
-        # however, fermi-dirac decoder is not able to do so, because given two extremely close embeddings, the probability is still large (0.88)
-        # 1.0 / (math.exp((0.0-2.0)/1.0)+1)
-        # 0.8807970779778823
-        # we find that the gradient of logits is 0.0001
-        # and gradient of z, are almost 1e-10
-        # after several epochs, gradient vanishes to 1e-20
-        def print_grad_hook(grad):
-            print(f"正面 logits 的梯度：{grad}")
-        def print_grad_hook2(grad):
-            print(f"中间 z 的梯度：{grad}")
-        def print_grad_hook3(grad):
-            print(f"负面 logits 的梯度：{grad}")
-        def print_grad_hook4(grad):
-            print(f"正面 logits 的梯度是否有nan：{torch.isnan(grad).any()}")
-        # pos_scores.register_hook(print_grad_hook)
-        # pos_scores.register_hook(print_grad_hook4)
-        # z.register_hook(print_grad_hook2)
-        # z.register_hook(print_grad_hook4)
-        # neg_scores.register_hook(print_grad_hook3)
-        # self.train_metrics()
-        # pdb.set_trace()
         
         labels = [1] * pos_scores.shape[0] + [0] * neg_scores.shape[0]
         preds = list(pos_scores.data.cpu().numpy()) + list(neg_scores.data.cpu().numpy())
@@ -244,9 +163,8 @@ class HGCN(pl.LightningModule):
     
     def validation_step(self, batch, batch_idx):
         dense_data, node_mask = utils.to_dense(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
-        # dense_data = dense_data.mask(node_mask)
         x, E = dense_data.X, dense_data.E
-        adj, edge_labels = utils.process_edge_attr(E)
+        adj, edge_labels = utils.process_edge_attr(E, node_mask)
         node_labels = x
         # calculate the degree of each node as node feature
         degrees = adj.sum(dim=1)  # Summing over the rows gives the degree of each node
@@ -259,7 +177,6 @@ class HGCN(pl.LightningModule):
         pos_scores = self.edge_decode(z, pos_edge_index, z.size(0), batch_index)
         neg_scores = self.edge_decode(z, neg_edge_index, z.size(0), batch_index)
         
-        # TODO: decoder is too shallow
         pred_node_labels = self.nc_decoder.decode(z, adj)
         pred_edge_labels = self.lp_decoder.decode(z, adj)
         
@@ -274,7 +191,7 @@ class HGCN(pl.LightningModule):
         dense_data, node_mask = utils.to_dense(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
         # dense_data = dense_data.mask(node_mask)
         x, E = dense_data.X, dense_data.E
-        adj, edge_labels = utils.process_edge_attr(E)
+        adj, edge_labels = utils.process_edge_attr(E, node_mask)
         node_labels = x
         
         # calculate the degree of each node as node feature
@@ -320,8 +237,6 @@ class HGCN(pl.LightningModule):
         
         pred_edge_labels = torch.argmax(pred_edge_labels, dim=-1)
         pred_edge_labels = pred_edge_labels.data.cpu().numpy()
-        # edge_labels = torch.argmax(edge_labels, dim=-1)
-        # edge_labels = edge_labels.data.cpu().numpy()
         edge_acc = np.mean(edge_labels == pred_edge_labels)
         edge_f1 = f1_score(edge_labels.reshape(-1), pred_edge_labels.reshape(-1), average='micro')
         edge_metrics = {'acc': edge_acc, 'f1': edge_f1}
@@ -356,23 +271,9 @@ class HGCN(pl.LightningModule):
     
     def on_validation_epoch_start(self):
         self.val_loss.reset()
-        # self.val_metrics.reset()
         
     def on_test_epoch_start(self):
         self.test_loss.reset()
-        # self.test_metrics.reset()
-    
-    # def on_validation_epoch_end(self):
-    #     metrics = [self]
-        
-    
-    # def on_after_backward(self):
-        # for name, param in self.named_parameters():
-        #     if param.grad is not None:
-        #         print(f'Gradient {name} {param.grad.abs().mean().item()}')
-        #     else:
-        #         print(f'Gradient {name} None')
-    
     
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.cfg.train.lr, weight_decay=self.cfg.train.weight_decay)

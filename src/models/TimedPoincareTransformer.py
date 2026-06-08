@@ -446,17 +446,7 @@ class TimedPoincareTransformer(nn.Module):
         )
         
     def forward(self, t, x, mask=None):
-        """
-        Args:
-            t: Time tensor of shape [batch_size]
-            x: Input tensor of shape [batch_size, seq_len, model_dim]
-            mask: Optional mask tensor of shape [batch_size, seq_len]
-        
-        Returns:
-            Output tensor of shape [batch_size, seq_len, model_dim]
-        """
         # Get time embedding
-
         t_emb = self.t_embedder(t)
         
         # Get positions
@@ -468,11 +458,95 @@ class TimedPoincareTransformer(nn.Module):
         # Mobius addition of input and positional embeddings
         x = self.manifold.mobius_add(x, pos_emb)
         
-        # Apply transformer layers with time embedding
+        # --- FIXED FOR BASE TIMED POINCARE TRANSFORMER ---
+        # Passes t_emb safely, but binds mask explicitly by keyword!
         for layer in self.layers:
-            x = layer(x, t_emb, mask)
+            x = layer(x, t_emb, mask=mask)
         
         # Apply output projection
         x = self.output_projection(x)
         
-        return x 
+        return x
+    
+class FlowMapTimedPoincareTransformer(nn.Module):
+    def __init__(self, cfg, manifold, in_channels, num_layers, num_heads, dropout, max_seq_len, use_hyperbolic_attention, attention_type, attention_activation):
+        super(FlowMapTimedPoincareTransformer, self).__init__()
+        self.cfg = cfg
+        self.manifold = manifold
+        self.model_dim = in_channels
+        self.num_layers = num_layers
+        self.num_heads = num_heads
+        self.dropout = dropout
+        self.head_dim = self.model_dim // self.num_heads
+        self.max_seq_len = max_seq_len
+        self.use_hyperbolic_attention = use_hyperbolic_attention
+        self.attention_type = attention_type  # 'distance' or 'inner_product'
+        self.attention_activation = attention_activation  # 'exp', 'sigmoid', or 'identity'
+
+        # Time embedding
+        self.t_embedder = TimestepEmbedder(self.model_dim, manifold)
+        self.s_embedder = TimestepEmbedder(self.model_dim, manifold)
+        
+        # Positional embedding
+        self.pos_embedding = PoincareLearnedPositionalEmbedding(
+            num_embeddings=self.max_seq_len,
+            embedding_dim=self.model_dim,
+            padding_idx=0,
+            ball=self.manifold
+            # requires_grad=True
+        )
+        
+        # Transformer layers
+        self.layers = nn.ModuleList([
+            TimedPoincareTransformerLayer(
+                model_dim=self.model_dim,
+                num_heads=self.num_heads,
+                dropout=self.dropout,
+                manifold=self.manifold,
+                use_hyperbolic_attention=self.use_hyperbolic_attention,
+                attention_type=self.attention_type,
+                attention_activation=self.attention_activation
+            ) for _ in range(self.num_layers)
+        ])
+        
+        # Output projection
+        self.output_projection = PoincareLinear(
+            manifold=self.manifold,
+            in_dim=self.model_dim,
+            out_dim=self.model_dim,
+            bias=True
+        )
+
+        self.new_output_projection = nn.Linear(self.model_dim, self.model_dim, bias=True)
+        self.cond_proj = nn.Linear(2 * self.model_dim, self.model_dim, bias=True)
+        
+    def forward(self, s, t, x, mask=None):
+        # Get time embedding
+        t_emb = self.t_embedder(t.reshape(-1))  
+        s_emb = self.s_embedder(s.reshape(-1))  
+
+        # This variant explicitly constructs cond!
+        cond = self.cond_proj(torch.cat([t_emb, s_emb], dim=-1))  
+        cond = cond.unsqueeze(1).expand(-1, x.size(1), -1)        
+
+        positions = torch.arange(x.size(1), device=x.device).unsqueeze(0)
+        
+        # Add positional embeddings
+        pos_emb = self.pos_embedding(positions)
+        
+        # Mobius addition of input and positional embeddings
+        x = self.manifold.mobius_add(x, pos_emb)
+        
+        # --- FIXED FOR FLOW MAP VARIANT ---
+        # Passes cond safely, and binds mask explicitly by keyword!
+        for layer in self.layers:
+            x = layer(x, cond, mask=mask)
+        
+        # Apply output projection
+        x = self.output_projection(x)
+        
+        return x
+        # x_tangent = self.manifold.logmap0(x)
+        # v = self.new_output_projection(x_tangent)          # Euclidean linear
+        # v = self.manifold.proju(x_input, v)            # project to tangent space at x_input
+        # return v

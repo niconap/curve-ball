@@ -90,29 +90,8 @@ class MolecularVisualization:
                     wandb.log({log: wandb.Image(file_path)}, commit=True)
             except rdkit.Chem.KekulizeException:
                 print("Can't kekulize molecule")
-
-        # # Save smiles instead of images
-        # num_molecules_to_visualize = min(num_molecules_to_visualize, len(molecules))
-        # print(f"Visualizing {num_molecules_to_visualize} of {len(molecules)}")
-
-        # smiles_list = []
-        # for i in range(num_molecules_to_visualize):
-        #     mol = self.mol_from_graphs(molecules[i][0].numpy(), molecules[i][1].numpy())
-        #     try:
-        #         Chem.SanitizeMol(mol)
-        #         smi = Chem.MolToSmiles(mol)
-        #         smiles_list.append(smi)
-        #     except (Chem.KekulizeException, ValueError):
-        #         pass
-        #         # print("Can't kekulize molecule")
-
-        # if wandb.run and log is not None:
-        #     wandb.log({log: wandb.Table(columns=["SMILES"], data=[[s] for s in smiles_list])})
-
-    # def visualize_interpolate(self, path: str, molecules: list, num_molecules_to_visualize: int, log='graph'):
-
+                
     def calc_props(self,mol):
-        """返回常用性质字典"""
         valid = self.is_valid_mol(mol)
         if not valid:
             return {
@@ -132,41 +111,33 @@ class MolecularVisualization:
         }
 
     def is_valid_mol(self, mol: Chem.Mol) -> bool:
-        """
-        如果 mol 为 None，或者在 Sanitize 过程中抛异常，则认为无效。
-        返回 True / False
-        """
         if mol is None:
             return False
         try:
-            Chem.SanitizeMol(mol)              # 会做价键、芳香性、价态等一系列合法性检查
+            Chem.SanitizeMol(mol)          
             return True
         except Chem.rdchem.KekulizeException:
-            # 芳香化失败
             return False
         except ValueError:
-            # 其他 Sanitize 错误
             return False
         
     def visualize_interpolation_strip(
         self,
         molecule_list,
         path: str,
-        img_size=(250, 250),             # 单个分子尺寸
-        log_tag: str = "interp_strip",   # wandb 的 key
-        alpha_list=None                  # 对应的 t 值，可手动传入
+        img_size=(250, 250),         
+        log_tag: str = "interp_strip",   
+        alpha_list=None                  
     ):
         """
         molecule_list: [(atom_types, edge_types), ...] ⟂ len=11
         mol_from_graphs: callable(atom_types, edge_types) -> RDKit Mol
-        path: 保存文件夹
         """
         print(f"start visualize interpolation strip")
-        if alpha_list is None:                       # 默认均匀 0.0 ~ 1.0
+        if alpha_list is None:                  
             steps = len(molecule_list) - 1
             alpha_list = [i / steps for i in range(steps + 1)]
 
-        # 1. 转 RDKit Mol 并准备 legend
         mols, legends = [], []
         for (atom_types, edge_types), t in zip(molecule_list, alpha_list):
             print(f"visualize interpolation strip {t}")
@@ -174,20 +145,16 @@ class MolecularVisualization:
             mols.append(mol)
             props = self.calc_props(mol)
             legends.append(f"valid: {props['valid']}\nformula: {props['formula']}\nrings: {props['rings']}\n")
-            # logP = {props['logP']:.2f}, QED = {props['QED']:.2f}
-            
 
-        # 2. 生成单行网格图
         strip_img = Draw.MolsToGridImage(
             mols,
-            molsPerRow=len(mols),        # 单行
+            molsPerRow=len(mols),     
             subImgSize=img_size,
             legends=legends,
             useSVG=False,
-            returnPNG=True               # 直接拿到 PNG bytes
+            returnPNG=True        
         )
 
-        # 3. 保存到本地
         os.makedirs(path, exist_ok=True)
         file_path = os.path.join(path, "interpolation_strip.png")
         with open(file_path, "wb") as f:
@@ -195,17 +162,14 @@ class MolecularVisualization:
 
         print(f"Saved strip to {file_path}")
 
-        # 4. 上传 wandb（可选）
         if wandb.run:
             wandb.log({log_tag: wandb.Image(file_path)}, commit=True)
 
-        return file_path  # 方便后续调用
+        return file_path 
 
     def mol_to_pil_with_caption_bg(self, mol, caption):
-        # ① 先画分子
         mol_img = Draw.MolToImage(mol, size=(250, 200)).convert("RGBA")
 
-        # ② 判断合法性后选底色（RGBA）
         if self.is_valid_mol(mol):
             bg = (230, 255, 230, 160)   # very light green, 60 % alpha
         else:
@@ -213,11 +177,9 @@ class MolecularVisualization:
         w, h = mol_img.size
         h_cap = 20
 
-        # ③ 造底布 & 贴图
         canvas = Image.new("RGBA", (w, h + h_cap), bg)
         canvas.paste(mol_img, (0, 0), mol_img)
 
-        # ④ 写标题
         draw = ImageDraw.Draw(canvas)
         draw.text((5, h + 2), caption, fill=(0, 0, 0, 255))
         return canvas
@@ -234,7 +196,6 @@ class MolecularVisualization:
             cap     = f"formula={formula} | rings={rings}"
             imgs.append(self.mol_to_pil_with_caption_bg(mol, cap))
 
-        # -------- 横向拼接 --------
         widths, heights = zip(*(im.size for im in imgs))
         strip = Image.new('RGB', (sum(widths), max(heights)), 'white')
         x_off = 0
@@ -245,10 +206,6 @@ class MolecularVisualization:
         os.makedirs(save_path, exist_ok=True)
         save_path = os.path.join(save_path, f"{log_tag}.png")
         strip.save(save_path)
-
-        # (可选) 传给 wandb
-        # if wandb.run:
-        #     wandb.log({"interpolation_strip": wandb.Image(save_path)}, commit=True)
 
     def visualize_chain(self, path, nodes_list, adjacency_matrix, trainer=None):
         RDLogger.DisableLog('rdApp.*')

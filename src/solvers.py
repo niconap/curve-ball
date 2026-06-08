@@ -1,5 +1,7 @@
 """Copyright (c) Meta Platforms, Inc. and affiliates."""
 
+from xml.parsers.expat import model
+
 import torch
 from tqdm import tqdm
 import pdb
@@ -53,6 +55,8 @@ def projx_integrator_return_last(
         "x0_pred": x0_pred_step, 
         "vt_prediction": vt_prediction_step,
         "x1_prediction": x1_prediction_step,
+        "rg_vfm": x1_prediction_step,
+        "use_flow_map": x1_prediction_step, #placeholder since we don't use step fn explicitly
     }[method]
 
     xt = x0
@@ -61,16 +65,51 @@ def projx_integrator_return_last(
     if pbar:
         t0s = tqdm(t0s)
 
-    for t0, t1 in zip(t0s, t[1:]):
-        dt = t1 - t0
-        #x1[9,7:10, -10:]
-        vt = odefunc(t0.unsqueeze(0).unsqueeze(0), xt, node_mask)
-        xt = step_fn(
-            odefunc, xt, vt, t0, dt, manifold=manifold if local_coords else None, node_mask=node_mask
-        )
-        # import pdb; pdb.set_trace()
-        if projx:
-            xt = manifold.projx(xt)
+    if method == "use_flow_map":
+        z = x0
+        batch_size = z.shape[0]
+
+        # Dynamically calculate and build your mask array layout
+        if node_mask is not None:
+            current_seq_len = z.shape[1]
+            flow_map_mask = torch.ones((batch_size, current_seq_len), device=node_mask.device, dtype=node_mask.dtype)
+            nodes_to_copy = min(node_mask.shape[1], current_seq_len)
+            flow_map_mask[:, -nodes_to_copy:] = node_mask[:, -nodes_to_copy:]
+        else:
+            flow_map_mask = None
+
+        for r_val, t_val in zip(t[1:], t[:-1]):
+            r_scalar = r_val.expand(batch_size).to(z.device)
+            t_scalar = t_val.expand(batch_size).to(z.device)
+
+            t_expanded = t_val.expand_as(z)
+            r_expanded = r_val.expand_as(z)
+            
+            velocity_step = -(t_expanded - r_expanded) * odefunc(
+                s=r_scalar, 
+                t=t_scalar, 
+                x=z, 
+                mask=flow_map_mask
+            )
+
+            if hasattr(manifold, 'expmap'):
+                z = manifold.expmap(velocity_step, z) 
+            elif hasattr(manifold, 'exp'):
+                z = manifold.exp(z, velocity_step)
+            else:
+                z = z + velocity_step
+        xt = z
+    else:
+        for t0, t1 in zip(t0s, t[1:]):
+            dt = t1 - t0
+            #x1[9,7:10, -10:]
+            vt = odefunc(t0.unsqueeze(0).unsqueeze(0), xt, node_mask)
+            xt = step_fn(
+                odefunc, xt, vt, t0, dt, manifold=manifold if local_coords else None, node_mask=node_mask
+            )
+            # import pdb; pdb.set_trace()
+            if projx:
+                xt = manifold.projx(xt)
     return xt
 
 
@@ -206,10 +245,19 @@ def vt_prediction_step(odefunc, xt, x1, t0, dt, manifold=None, node_mask=None):
     else:
         return xt + dt * vt
 
+# def x1_prediction_step(odefunc, xt, x1, t0, dt, manifold=None, node_mask=None):
+#     if manifold is not None:
+#         vt = manifold.logmap(xt, x1)
+#         return manifold.expmap(xt, dt * vt / (1-t0))
+#     else:
+#         vt = x1 - xt
+#         return xt + dt * vt
+
+#NEW ADDITION
 def x1_prediction_step(odefunc, xt, x1, t0, dt, manifold=None, node_mask=None):
     if manifold is not None:
         vt = manifold.logmap(xt, x1)
-        return manifold.expmap(xt, dt * vt / (1-t0))
+        return manifold.expmap(xt, dt * vt / (1 - t0))
     else:
         vt = x1 - xt
-        return xt + dt * vt
+        return xt + dt * vt / (1 - t0)   
