@@ -12,6 +12,11 @@ import pickle
 import networkx as nx
 import pdb
 
+try:
+    from datasets.synthetic_generator import SyntheticGraphDataset
+except ImportError:
+    from src.datasets.synthetic_generator import SyntheticGraphDataset
+
 class SpectreGraphDataset(InMemoryDataset):
     def __init__(self, dataset_name, split, root, transform=None, pre_transform=None, pre_filter=None):
         self.sbm_file = 'sbm_200.pt'
@@ -184,7 +189,22 @@ class SpectreGraphDataModule(AbstractDataModule):
         base_path = pathlib.Path(os.path.realpath(__file__)).parents[2]
         root_path = os.path.join(base_path, self.datadir)
 
-        if self.debug:
+        if self.cfg.dataset.name.startswith("synthetic_"):
+            preset_name = self.cfg.dataset.name[len("synthetic_"):]
+            if self.debug:
+                from torch.utils.data import Subset
+                datasets = {
+                    'train': Subset(SyntheticGraphDataset(preset_name=preset_name, split='train', root=root_path), [0]),
+                    'val': Subset(SyntheticGraphDataset(preset_name=preset_name, split='val', root=root_path), [0]),
+                    'test': Subset(SyntheticGraphDataset(preset_name=preset_name, split='test', root=root_path), [0])
+                }
+            else:
+                datasets = {
+                    'train': SyntheticGraphDataset(preset_name=preset_name, split='train', root=root_path),
+                    'val': SyntheticGraphDataset(preset_name=preset_name, split='val', root=root_path),
+                    'test': SyntheticGraphDataset(preset_name=preset_name, split='test', root=root_path)
+                }
+        elif self.debug:
             from torch.utils.data import Subset
             datasets = {'train': Subset(SpectreGraphDataset(dataset_name=self.cfg.dataset.name,
                                             split='train', root=root_path), list(range(1))),

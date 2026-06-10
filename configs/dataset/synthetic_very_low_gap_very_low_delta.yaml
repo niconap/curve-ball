@@ -1,0 +1,3 @@
+name: synthetic_very_low_gap_very_low_delta
+datadir: 'data/synthetic/very_low_gap_very_low_delta/'
+debug: false

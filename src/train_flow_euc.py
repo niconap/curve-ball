@@ -124,7 +124,7 @@ def main(cfg: DictConfig):
     dataset_config = glob_cfg["dataset"]
     glob_cfg["train"]["batch_size"] = glob_cfg["flow_train"]["batch_size"]["train"]
     hydra.utils.log.info(f"Instantiating <{dataset_config.name} dataset>")
-    if dataset_config["name"] in ['sbm', 'comm20', 'planar', 'tree', 'ego_small']:
+    if dataset_config["name"] in ['sbm', 'comm20', 'planar', 'tree', 'ego_small'] or dataset_config["name"].startswith('synthetic_'):
         from datasets.spectre_dataset import SpectreGraphDataModule, SpectreDatasetInfos
         from analysis.spectre_utils import PlanarSamplingMetrics, SBMSamplingMetrics, Comm20SamplingMetrics, TreeSamplingMetrics, EgoSmallSamplingMetrics
         from analysis.visualization import NonMolecularVisualization
@@ -137,7 +137,7 @@ def main(cfg: DictConfig):
             sampling_metrics = Comm20SamplingMetrics(datamodule)
         elif dataset_config['name'] == 'tree':
             sampling_metrics = TreeSamplingMetrics(datamodule)
-        elif dataset_config['name'] == 'ego_small':
+        elif dataset_config['name'] == 'ego_small' or dataset_config['name'].startswith('synthetic_'):
             sampling_metrics = EgoSmallSamplingMetrics(datamodule)
         else:
             sampling_metrics = PlanarSamplingMetrics(datamodule)

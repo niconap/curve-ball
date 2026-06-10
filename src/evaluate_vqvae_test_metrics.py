@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.join(_src_dir, "models", "hyperbolic_nn_plusplus"))
 
 def build_graph_eval_objects(cfg: DictConfig):
     dataset_name = cfg.dataset.name
-    if dataset_name not in ["sbm", "comm20", "planar", "tree", "ego_small"]:
+    if dataset_name not in ["sbm", "comm20", "planar", "tree", "ego_small"] and not dataset_name.startswith('synthetic_'):
         raise ValueError(
             f"Dataset '{dataset_name}' is not supported by this evaluator. "
             "Use one of: sbm, comm20, planar, tree, ego_small."
@@ -45,7 +45,7 @@ def build_graph_eval_objects(cfg: DictConfig):
         sampling_metrics = Comm20SamplingMetrics(datamodule)
     elif dataset_name == "tree":
         sampling_metrics = TreeSamplingMetrics(datamodule)
-    elif dataset_name == "ego_small":
+    elif dataset_name == "ego_small" or dataset_name.startswith('synthetic_'):
         sampling_metrics = EgoSmallSamplingMetrics(datamodule)
     else:
         sampling_metrics = PlanarSamplingMetrics(datamodule)
