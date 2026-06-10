@@ -40,3 +40,4 @@ src/analysis/orca/tmp_*.txt
 
 outputs/*
 data/*
+*.key

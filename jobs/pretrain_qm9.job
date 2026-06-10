@@ -20,18 +20,22 @@ source activate HypeFlow
 export PYTHONPATH=$PYTHONPATH:$(pwd):$(pwd)/src/models/hyperbolic_nn_plusplus
 # export HYDRA_FULL_ERROR=1
 
-# 2. WandB Fixes
+# 2. WandB Setup
 export WANDB_START_METHOD=thread
 export WANDB_SILENT=true
-export WANDB_API_KEY="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"
-if [ -n "${WANDB_API_KEY}" ]; then
-  export WANDB_MODE=online
-  WANDB_LOG_MODE=online
-  echo "WANDB_API_KEY detected: using online mode."
+if [ -f "wandb.key" ]; then
+    export WANDB_API_KEY=$(cat wandb.key)
+    export WANDB_MODE=online
+    WANDB_LOG_MODE=online
+    echo "WandB API key loaded from wandb.key"
+elif [ -n "$WANDB_API_KEY" ]; then
+    export WANDB_MODE=online
+    WANDB_LOG_MODE=online
+    echo "WandB API key found in environment"
 else
-  export WANDB_MODE=offline
-  WANDB_LOG_MODE=offline
-  echo "WANDB_API_KEY not set: using offline mode."
+    export WANDB_MODE=offline
+    WANDB_LOG_MODE=offline
+    echo "No WandB API key found. Using offline mode."
 fi
 
 CURVATURE=0.1

@@ -20,13 +20,19 @@ export PYTHONPATH=$PYTHONPATH:$(pwd):$(pwd)/src/models/hyperbolic_nn_plusplus
 # 2. WandB Setup
 export WANDB_START_METHOD=thread
 export WANDB_SILENT=true
-export WANDB_API_KEY="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"
-if [ -n "${WANDB_API_KEY}" ]; then
-  export WANDB_MODE=online
-  WANDB_LOG_MODE=online
+if [ -f "wandb.key" ]; then
+    export WANDB_API_KEY=$(cat wandb.key)
+    export WANDB_MODE=online
+    WANDB_LOG_MODE=online
+    echo "WandB API key loaded from wandb.key"
+elif [ -n "$WANDB_API_KEY" ]; then
+    export WANDB_MODE=online
+    WANDB_LOG_MODE=online
+    echo "WandB API key found in environment"
 else
-  export WANDB_MODE=offline
-  WANDB_LOG_MODE=offline
+    export WANDB_MODE=offline
+    WANDB_LOG_MODE=offline
+    echo "No WandB API key found. Using offline mode."
 fi
 
 # 3. Dataset selection via Array ID

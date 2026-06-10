@@ -27,17 +27,22 @@ module load Mamba/24.9.0-0
 source activate HypeFlow
 export PYTHONPATH="${PYTHONPATH:-}:$(pwd):$(pwd)/src:$(pwd)/src/models/hyperbolic_nn_plusplus"
 
-# 2. WandB
+# 2. WandB Setup
 export WANDB_START_METHOD=thread
 export WANDB_SILENT=true
-if [ -n "${WANDB_API_KEY:-}" ]; then
-  export WANDB_MODE=online
-  WANDB_LOG_MODE=online
-  echo "WANDB_API_KEY detected: using online mode."
+if [ -f "wandb.key" ]; then
+    export WANDB_API_KEY=$(cat wandb.key)
+    export WANDB_MODE=online
+    WANDB_LOG_MODE=online
+    echo "WandB API key loaded from wandb.key"
+elif [ -n "$WANDB_API_KEY" ]; then
+    export WANDB_MODE=online
+    WANDB_LOG_MODE=online
+    echo "WandB API key found in environment"
 else
-  export WANDB_MODE=offline
-  WANDB_LOG_MODE=offline
-  echo "WANDB_API_KEY not set: using offline mode."
+    export WANDB_MODE=offline
+    WANDB_LOG_MODE=offline
+    echo "No WandB API key found. Using offline mode."
 fi
 
 CURVATURE=${1:-0.1}
