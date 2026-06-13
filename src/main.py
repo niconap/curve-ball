@@ -8,6 +8,7 @@ from src import utils
 from pytorch_lightning.utilities.warnings import PossibleUserWarning
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning import Trainer, seed_everything
+from pytorch_lightning.profilers import SimpleProfiler
 from pytorch_lightning.tuner import Tuner 
 from omegaconf import DictConfig
 import hydra
@@ -180,7 +181,22 @@ def main(cfg: DictConfig):
         print("[WARNING]: Run is called 'debug' -- it will run with fast_dev_run. ")
 
     use_gpu = cfg.general.gpus > 0 and torch.cuda.is_available()
+    # Profiler (enabled by setting PROFILE_RUN=1 in the environment / job script)
+    _profile = os.environ.get("PROFILE_RUN", "0").strip() == "1"
+    profiler = (
+        SimpleProfiler(
+            dirpath=".",          # written to Hydra's cwd (outputs/…/)
+            filename="profiler_output",
+            extended=True,
+        )
+        if _profile
+        else None
+    )
+    if _profile:
+        print("[Profiler] SimpleProfiler is ENABLED. Summary will be written to ./profiler_output.txt")
+
     wandb_logger = setup_wandb_logger(cfg)
+
     hyper_trainer = Trainer(  # gradient_clip_val=cfg.train.clip_grad,
         # strategy="ddp_find_unused_parameters_true",  # Needed to load old checkpoints
         strategy="auto",  # Needed to load old checkpoints
@@ -192,7 +208,9 @@ def main(cfg: DictConfig):
         enable_progress_bar=True,
         callbacks=callbacks,
         log_every_n_steps=50 if name != 'debug' else 1,
-        logger=wandb_logger)
+        logger=wandb_logger,
+        profiler=profiler,
+    )
     # tuner = Tuner(hyper_trainer) # Uncomment to find optimal batch size
     # tuner.scale_batch_size(hyper_model, datamodule=datamodule, mode='power')
 
