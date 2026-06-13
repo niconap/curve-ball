@@ -55,7 +55,8 @@ def main(cfg: DictConfig):
         dataset_infos = SpectreDatasetInfos(datamodule, dataset_config)
         train_metrics = TrainAbstractMetricsDiscrete(
         ) if cfg.model.type == 'HGVAE' else TrainAbstractMetrics()
-        visualization_tools = NonMolecularVisualization()
+        # visualization_tools = NonMolecularVisualization()
+        visualization_tools = None # Disable visualization for now
 
         if cfg.model.type == 'HGVAE' and cfg.model.extra_features is not None:
             extra_features = ExtraFeatures(

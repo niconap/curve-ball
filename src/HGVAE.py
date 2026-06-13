@@ -1330,14 +1330,15 @@ class HGVAE(pl.LightningModule):
                     recon_samples.append([atom_types, edge_types])
 
             # Only once after full pass
-            current_path = os.getcwd()
-            result_path = os.path.join(
-                current_path,
-                f'graphs/{self.name}/reconstruct_epoch_{self.current_epoch}/'
-            )
-            self.visualization_tools.visualize(result_path, recon_samples, min(
-                len(recon_samples), 512), "reconstruct_graph")
-            self.print("Visualization complete.")
+            if self.visualization_tools is not None:
+                current_path = os.getcwd()
+                result_path = os.path.join(
+                    current_path,
+                    f'graphs/{self.name}/reconstruct_epoch_{self.current_epoch}/'
+                )
+                self.visualization_tools.visualize(result_path, recon_samples, min(
+                    len(recon_samples), 512), "reconstruct_graph")
+                self.print("Visualization complete.")
 
             # === 4. 送入同一个评估模块 ===
             self.reconstruct_metrics = self.sampling_metrics(
@@ -1402,15 +1403,16 @@ class HGVAE(pl.LightningModule):
                     edge_types = recon_E[i, :n, :n].detach().cpu()
                     recon_samples.append([atom_types, edge_types])
 
-                    # Only once after full pass
-            current_path = os.getcwd()
-            result_path = os.path.join(
-                current_path,
-                f'graphs/{self.name}/reconstruct_epoch_{self.current_epoch}/'
-            )
-            self.visualization_tools.visualize(result_path, recon_samples, min(
-                len(recon_samples), 512), "reconstruct_graph")
-            self.print("Visualization complete.")
+            # Only once after full pass
+            if self.visualization_tools is not None:
+                current_path = os.getcwd()
+                result_path = os.path.join(
+                    current_path,
+                    f'graphs/{self.name}/reconstruct_epoch_{self.current_epoch}/'
+                )
+                self.visualization_tools.visualize(result_path, recon_samples, min(
+                    len(recon_samples), 512), "reconstruct_graph")
+                self.print("Visualization complete.")
 
             # === 4. 送入同一个评估模块 ===
             self.reconstruct_metrics = self.sampling_metrics(
@@ -1441,37 +1443,39 @@ class HGVAE(pl.LightningModule):
             print(f'Sampling took {time.time() - start:.2f} seconds\n')
             self.sampling_metrics.reset()
 
-        self.print("Generating molecule visualizations...")
-        molecule_list = []
-        dataloader = self.trainer.datamodule.train_dataloader()
 
-        if self.val_counter == 1:
-            batch = next(iter(dataloader))
-            dense_data, node_mask = utils.to_dense(
-                batch.x, batch.edge_index, batch.edge_attr, batch.batch)
-            X, E = dense_data.X, dense_data.E
-            sample = PlaceHolder(X=X, E=E, y=None).mask_argmax(
-                node_mask=node_mask, collapse=True)
-            X, E = sample.X, sample.E
-            # pdb.set_trace()
-            n_nodes = node_mask.sum(-1)
-            batch_size = X.shape[0]
+        if self.visualization_tools is not None:
+            self.print("Generating molecule visualizations...")
+            molecule_list = []
+            dataloader = self.trainer.datamodule.train_dataloader()
 
-            for i in range(batch_size):
-                n = n_nodes[i]
-                atom_types = X[i, :n].cpu()
-                edge_types = E[i, :n, :n].cpu()
-                molecule_list.append([atom_types, edge_types])
+            if self.val_counter == 1:
+                batch = next(iter(dataloader))
+                dense_data, node_mask = utils.to_dense(
+                    batch.x, batch.edge_index, batch.edge_attr, batch.batch)
+                X, E = dense_data.X, dense_data.E
+                sample = PlaceHolder(X=X, E=E, y=None).mask_argmax(
+                    node_mask=node_mask, collapse=True)
+                X, E = sample.X, sample.E
+                # pdb.set_trace()
+                n_nodes = node_mask.sum(-1)
+                batch_size = X.shape[0]
 
-            # Only once after full pass
-            current_path = os.getcwd()
-            result_path = os.path.join(
-                current_path,
-                f'graphs/{self.name}/train_data_first_batch/'
-            )
-            self.visualization_tools.visualize(
-                result_path, molecule_list, batch_size)
-            self.print("Visualization complete.")
+                for i in range(batch_size):
+                    n = n_nodes[i]
+                    atom_types = X[i, :n].cpu()
+                    edge_types = E[i, :n, :n].cpu()
+                    molecule_list.append([atom_types, edge_types])
+
+                # Only once after full pass
+                current_path = os.getcwd()
+                result_path = os.path.join(
+                    current_path,
+                    f'graphs/{self.name}/train_data_first_batch/'
+                )
+                self.visualization_tools.visualize(
+                    result_path, molecule_list, batch_size)
+                self.print("Visualization complete.")
 
     def on_test_epoch_end(self):
         samples_left_to_generate = self.cfg.general.final_model_samples_to_generate
